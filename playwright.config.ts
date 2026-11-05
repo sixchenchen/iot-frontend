@@ -39,8 +39,15 @@ export default defineConfig({
     /* Collect trace when retrying the failed test. See https://playwright.dev/docs/trace-viewer */
     trace: 'on-first-retry',
 
-    /* Only on CI systems run the tests headless */
-    headless: !!process.env.CI,
+    /* 统一使用无头模式：本地与 CI 行为一致，也便于在无桌面环境执行 */
+    headless: true,
+
+    /*
+     * 浏览器渠道覆盖：默认使用 Playwright 自带的 Chromium（CI 环境一致）；
+     * 本地若未执行 `npx playwright install chromium`，可设置
+     * PLAYWRIGHT_CHANNEL=msedge 或 chrome 复用系统已安装的浏览器。
+     */
+    channel: process.env.PLAYWRIGHT_CHANNEL as 'chrome' | 'msedge' | undefined,
   },
 
   /* Configure projects for major browsers */

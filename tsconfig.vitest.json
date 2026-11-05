@@ -3,7 +3,9 @@
 
   // Override to include only test files and clear exclusions.
   // Application code imported in tests is automatically included via module resolution.
-  "include": ["src/**/__tests__/*", "env.d.ts"],
+  // 但 ambient/global 声明（如 vue-router 的 RouteMeta 扩展）不会通过 import 被带入，
+  // 必须显式加入，否则测试代码间接引用 router 时会丢失类型增强。
+  "include": ["src/**/__tests__/*", "src/types/**/*.d.ts", "env.d.ts"],
   "exclude": [],
 
   "compilerOptions": {
