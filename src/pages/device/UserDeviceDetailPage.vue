@@ -458,7 +458,11 @@
         <el-select v-model="row.action" style="width: 110px">
           <el-option v-for="action in CONTROL_ACTIONS" :key="action" :label="action" :value="action" />
         </el-select>
-        <el-select v-model="row.target" style="width: 130px">
+        <el-select
+          v-model="row.target"
+          style="width: 130px"
+          @change="handleBatchTargetChange(row)"
+        >
           <el-option
             v-for="target in controlTargets"
             :key="target"
@@ -467,12 +471,15 @@
           />
         </el-select>
         <el-input-number
-          v-if="['mos', 'relay'].includes(row.target)"
+          v-if="supportsChannel(row.target)"
           v-model="row.channel"
           :min="0"
-          :max="8"
+          :max="channelCountOf(detail ?? {}, row.target)"
           style="width: 100px"
         />
+        <span v-if="supportsChannel(row.target)" class="batch-channel-hint">
+          通道 0~{{ channelCountOf(detail ?? {}, row.target) }}
+        </span>
         <el-input
           v-model="row.paramsText"
           placeholder='{"state":1}'
@@ -611,12 +618,14 @@ import {
   CONTROL_TARGET_LABELS,
   OTA_STATE_LABELS,
   availableControlTargets,
+  channelCountOf,
   defaultControlParams,
   formatBytes,
   formatDateTime,
   formatUptime,
   isDeviceOnline,
   prettyJSON,
+  supportsChannel,
 } from '@/utils/device'
 import {
   ALERT_LEVEL_LABELS,
@@ -1054,6 +1063,16 @@ const addBatchRow = () => {
   })
 }
 
+/**
+ * 切换控制目标时重置通道与参数：
+ *   - 通道上限随 capabilities 变化（如 led:3 → 0~3），避免残留越界通道号；
+ *   - 参数恢复为该目标的默认结构（开关 state / 舵机 angle）。
+ */
+const handleBatchTargetChange = (row: BatchRow) => {
+  row.channel = 0
+  row.paramsText = JSON.stringify(defaultControlParams(row.target))
+}
+
 const removeBatchRow = (index: number) => {
   batchRows.value.splice(index, 1)
 }
@@ -1079,10 +1098,11 @@ const submitBatch = async () => {
       ElMessage.warning('参数必须是 JSON 对象，如 {"state":1}')
       return
     }
+    // 通道下发规则与单条控制一致：只有按通道操作的物理目标才携带 channel。
     items.push({
       action: row.action,
       target: row.target,
-      channel: ['mos', 'relay'].includes(row.target) ? row.channel : undefined,
+      channel: supportsChannel(row.target) ? row.channel : undefined,
       params: params as Record<string, unknown>,
     })
   }
@@ -1365,6 +1385,11 @@ onUnmounted(() => {
 }
 .batch-params {
   flex: 1;
+}
+.batch-channel-hint {
+  font-size: 12px;
+  color: #909399;
+  white-space: nowrap;
 }
 .dialog-alert {
   margin-bottom: 16px;

@@ -55,6 +55,7 @@ export default defineConfig({
     },
   },
   server: {
+    host: '0.0.0.0',
     port: 5173,
     proxy: {
       // 后端服务地址通过环境变量覆盖，默认本地 8080。
