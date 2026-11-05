@@ -14,13 +14,28 @@ export interface OtaCheckResponse {
   size: number | null
 }
 
-/** GET /user/ota/progress/{deviceId} 的进度。 */
+/**
+ * GET /user/ota/progress/{deviceId} 的进度（文档 8.5 / 6.8）。
+ * 同时作为 WebSocket `ota_progress` 推送归一化后的前端模型。
+ */
 export interface OtaProgressVO {
   deviceId: string
+  /** accepted / downloading / verifying / flashing / rebooting / success / failed */
   otaState: string | null
+  otaStateText: string | null
   otaProgress: number | null
   otaVersion: string | null
-  updateTime: string | null
+  commandId: string | null
+  /** 0~6，与指令状态一致。 */
+  commandStatus: number | null
+  commandStatusText: string | null
+  errorMsg: string | null
+  otaUpdateTime: string | null
+  /** OTA 任务是否进行中（后端派生字段）。 */
+  running: boolean
+  /** 是否进入终态（success / failed）。 */
+  finished: boolean
+  serverTime: string | null
 }
 
 /** GET /user/ota/records 的分页元素。 */

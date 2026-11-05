@@ -150,4 +150,86 @@ describe('设备实时状态 Store', () => {
     expect(hoisted.options).toBeNull()
     expect(store.connectionStatus).toBe('idle')
   })
+
+  it('OTA 推送按设备归一化 MAC 并补全阶段文案', () => {
+    const store = useDeviceRealtimeStore()
+    store.connect()
+
+    hoisted.options?.onOtaProgress?.('B4:BF:E9:0C:DB:A1', {
+      otaState: 'downloading',
+      progress: 30,
+      commandId: 'cmd-ota-1',
+      version: '1.2.0',
+    })
+
+    const pushed = store.getOtaProgress(MAC)
+    expect(pushed).toMatchObject({
+      deviceId: MAC,
+      otaState: 'downloading',
+      otaStateText: '下载中',
+      otaProgress: 30,
+      otaVersion: '1.2.0',
+      running: true,
+      finished: false,
+    })
+    expect(store.lastOtaProgressAt).toBeGreaterThan(0)
+  })
+
+  it('同 commandId 进度单调递增，乱序旧消息不回退', () => {
+    const store = useDeviceRealtimeStore()
+    store.connect()
+
+    hoisted.options?.onOtaProgress?.(MAC, { otaState: 'downloading', progress: 60, commandId: 'cmd-1' })
+    hoisted.options?.onOtaProgress?.(MAC, { otaState: 'downloading', progress: 35, commandId: 'cmd-1' })
+
+    expect(store.getOtaProgress(MAC)?.otaProgress).toBe(60)
+  })
+
+  it('终态不可逆：同 commandId 后续旧消息被丢弃', () => {
+    const store = useDeviceRealtimeStore()
+    store.connect()
+
+    hoisted.options?.onOtaProgress?.(MAC, { otaState: 'success', progress: 90, commandId: 'cmd-1' })
+    hoisted.options?.onOtaProgress?.(MAC, { otaState: 'downloading', progress: 50, commandId: 'cmd-1' })
+
+    const pushed = store.getOtaProgress(MAC)
+    expect(pushed?.otaState).toBe('success')
+    expect(pushed?.finished).toBe(true)
+    // 终态进度补到 100，保证进度条可满格展示。
+    expect(pushed?.otaProgress).toBe(100)
+  })
+
+  it('新 commandId 视为新一轮升级，重置终态与进度', () => {
+    const store = useDeviceRealtimeStore()
+    store.connect()
+
+    hoisted.options?.onOtaProgress?.(MAC, { otaState: 'success', progress: 100, commandId: 'cmd-1' })
+    hoisted.options?.onOtaProgress?.(MAC, { otaState: 'accepted', progress: 5, commandId: 'cmd-2' })
+
+    const pushed = store.getOtaProgress(MAC)
+    expect(pushed?.commandId).toBe('cmd-2')
+    expect(pushed?.otaState).toBe('accepted')
+    expect(pushed?.otaProgress).toBe(5)
+    expect(pushed?.running).toBe(true)
+    expect(pushed?.finished).toBe(false)
+  })
+
+  it('失败推送保留错误原因', () => {
+    const store = useDeviceRealtimeStore()
+    store.connect()
+
+    hoisted.options?.onOtaProgress?.(MAC, {
+      otaState: 'failed',
+      progress: 40,
+      commandId: 'cmd-1',
+      error: '固件校验失败',
+    })
+
+    expect(store.getOtaProgress(MAC)).toMatchObject({
+      otaState: 'failed',
+      errorMsg: '固件校验失败',
+      finished: true,
+      otaProgress: 100,
+    })
+  })
 })

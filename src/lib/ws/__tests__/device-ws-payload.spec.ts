@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   parseAlertPayload,
   parseCommandResultPayload,
+  parseOtaProgressPayload,
   parseSensorPayload,
   parseStatePayload,
   unwrapEnvelope,
@@ -133,5 +134,55 @@ describe('device ws payload parsing', () => {
     expect(parseCommandResultPayload(JSON.stringify({ data: { status: 2 } }))).toBeNull()
     expect(parseCommandResultPayload(JSON.stringify({ data: { commandId: 'c', status: 'x' } }))).toBeNull()
     expect(parseCommandResultPayload('not-json')).toBeNull()
+  })
+
+  it('解析 /ota 进度信封消息', () => {
+    const body = JSON.stringify({
+      type: 'ota_progress',
+      deviceId: 'B4BFE90CDBA1',
+      timestamp: '2026-11-05T14:05:00',
+      data: {
+        otaState: 'downloading',
+        otaStateText: '下载中',
+        progress: 42,
+        version: '1.2.0',
+        commandId: 'cmd-ota-1',
+        error: null,
+        reportTime: '2026-11-05T14:05:00',
+      },
+    })
+
+    expect(parseOtaProgressPayload(body)).toEqual({
+      otaState: 'downloading',
+      otaStateText: '下载中',
+      progress: 42,
+      version: '1.2.0',
+      commandId: 'cmd-ota-1',
+      error: null,
+      reportTime: '2026-11-05T14:05:00',
+    })
+  })
+
+  it('/ota 进度夹取到 0~100，缺失进度按 0 处理', () => {
+    const over = parseOtaProgressPayload(
+      JSON.stringify({ type: 'ota_progress', data: { otaState: 'flashing', progress: 180 } }),
+    )
+    expect(over?.progress).toBe(100)
+
+    const negative = parseOtaProgressPayload(
+      JSON.stringify({ type: 'ota_progress', data: { otaState: 'flashing', progress: -20 } }),
+    )
+    expect(negative?.progress).toBe(0)
+
+    const missing = parseOtaProgressPayload(
+      JSON.stringify({ type: 'ota_progress', data: { otaState: 'accepted' } }),
+    )
+    expect(missing?.progress).toBe(0)
+  })
+
+  it('缺少 otaState 或非 JSON 的 /ota 消息被丢弃', () => {
+    expect(parseOtaProgressPayload(JSON.stringify({ data: { progress: 10 } }))).toBeNull()
+    expect(parseOtaProgressPayload(JSON.stringify({ data: { otaState: '' } }))).toBeNull()
+    expect(parseOtaProgressPayload('not-json')).toBeNull()
   })
 })

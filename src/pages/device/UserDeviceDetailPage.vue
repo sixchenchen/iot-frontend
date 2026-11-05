@@ -64,7 +64,7 @@
               <h4>OTA 进度</h4>
               <div v-if="otaProgress?.otaState" class="ota-progress">
                 <el-tag :type="otaTagType">
-                  {{ OTA_STATE_LABELS[otaProgress.otaState] || otaProgress.otaState }}
+                  {{ otaProgress.otaStateText || OTA_STATE_LABELS[otaProgress.otaState] || otaProgress.otaState }}
                 </el-tag>
                 <el-progress
                   :percentage="Math.min(Math.max(otaProgress.otaProgress ?? 0, 0), 100)"
@@ -73,7 +73,10 @@
                 />
                 <div class="ota-meta">
                   目标版本：{{ otaProgress.otaVersion || '-' }} ·
-                  {{ formatDateTime(otaProgress.updateTime) }}
+                  {{ formatDateTime(otaProgress.otaUpdateTime) }}
+                </div>
+                <div v-if="otaProgress.errorMsg" class="ota-meta ota-error">
+                  {{ otaProgress.errorMsg }}
                 </div>
               </div>
               <el-empty v-else description="暂无 OTA 进度" :image-size="48" />
@@ -648,6 +651,8 @@ const online = computed(() => onlineState.value?.online ?? isDeviceOnline(detail
 /** 能力集/current_state 面板：快照 + /state 实时增量合并。 */
 const realtimeStates = computed(() => realtimeStore.getStates(deviceId.value))
 const realtimeConnected = computed(() => realtimeStore.connectionStatus === 'connected')
+/** OTA 实时进度（/topic/device/{mac}/ota），为空时回退到 REST 快照。 */
+const realtimeOtaProgress = computed(() => realtimeStore.getOtaProgress(deviceId.value))
 
 const otaProgress = ref<OtaProgressVO | null>(null)
 /** 失败重试后的轮询状态：成功前按钮保持 loading，避免“像又失败了”的错觉。 */
@@ -692,7 +697,7 @@ const refreshAll = async () => {
   const tasks = [
     deviceApi.onlineMine(deviceId.value).then((res) => (onlineState.value = res)).catch(() => undefined),
     sensorApi.latest(deviceId.value).then((res) => (latestSensors.value = res || [])).catch(() => undefined),
-    otaApi.progress(deviceId.value).then((res) => (otaProgress.value = res)).catch(() => undefined),
+    otaApi.progress(deviceId.value).then((res) => applyOtaSnapshot(res)).catch(() => undefined),
     deviceApi.commandStats(deviceId.value).then((res) => (commandStats.value = res)).catch(() => undefined),
   ]
   await Promise.all(tasks)
@@ -916,7 +921,7 @@ const pollOtaRetryProgress = async (attempt = 0) => {
 
   try {
     const progress = await otaApi.progress(deviceId.value)
-    otaProgress.value = progress
+    applyOtaSnapshot(progress)
     if (progress?.otaState === 'success') {
       otaRetrying.value = false
       // 升级已成功，清空旧的“发现新版本”结果，避免继续展示“立即升级”。
@@ -1142,6 +1147,116 @@ const handleControlSuccess = () => {
   deviceApi.commandStats(deviceId.value).then((res) => (commandStats.value = res)).catch(() => undefined)
 }
 
+/**
+ * 快照 / 实时合并：终态优先，其次进度更大者。
+ * 避免页面刷新拿到的旧快照把 WS 已推送的更新进度覆盖回去。
+ *
+ * 注意：后端在指令 TIMEOUT 时会清空 device_info 的 OTA 字段且**不推送**，
+ * 因此 REST 返回 `otaState=null` 时以快照为准，防止页面永久停留在「升级中」。
+ */
+const applyOtaSnapshot = (snapshot: OtaProgressVO | null) => {
+  if (snapshot && !snapshot.otaState) {
+    otaProgress.value = null
+    return
+  }
+
+  const pushed = realtimeOtaProgress.value
+  if (!pushed) {
+    otaProgress.value = snapshot
+    return
+  }
+  if (
+    !snapshot ||
+    pushed.finished ||
+    (!snapshot.finished && (pushed.otaProgress ?? 0) >= (snapshot.otaProgress ?? 0))
+  ) {
+    otaProgress.value = pushed
+    return
+  }
+  otaProgress.value = snapshot
+}
+
+/** 终态副作用：停止轮询、刷新记录、成功时同步设备版本号并清理升级入口。 */
+const handleOtaResult = (result: OtaProgressVO) => {
+  if (!result.finished) return
+
+  stopOtaRetryPolling()
+  otaRetrying.value = false
+
+  if (result.otaState === 'success') {
+    otaCheckResult.value = null
+    if (detail.value && result.otaVersion) {
+      detail.value = { ...detail.value, firmware: result.otaVersion }
+    }
+  }
+  void loadOtaRecords()
+}
+
+/**
+ * 升级进行中兜底轮询（文档 11.5）：WS 为主通道，每 2s 拉一次 /progress。
+ * 覆盖两类 WS 无法覆盖的场景：
+ *   1. 指令 TIMEOUT：后端清空 OTA 字段但不推送；
+ *   2. 断线重连期间丢失的中间阶段。
+ */
+const OTA_FALLBACK_POLL_INTERVAL = 2000
+let otaFallbackTimer: ReturnType<typeof setTimeout> | null = null
+
+const stopOtaFallbackPolling = () => {
+  if (otaFallbackTimer) {
+    clearTimeout(otaFallbackTimer)
+    otaFallbackTimer = null
+  }
+}
+
+const pollOtaProgressFallback = async () => {
+  otaFallbackTimer = null
+  if (!deviceId.value) return
+
+  try {
+    applyOtaSnapshot(await otaApi.progress(deviceId.value))
+  } catch {
+    // 单次失败不终止轮询，由下一次重试继续
+  }
+
+  const current = otaProgress.value
+  if (current?.finished) handleOtaResult(current)
+  if (current?.running) scheduleOtaFallbackPolling()
+}
+
+function scheduleOtaFallbackPolling() {
+  if (otaFallbackTimer) return
+  otaFallbackTimer = setTimeout(() => void pollOtaProgressFallback(), OTA_FALLBACK_POLL_INTERVAL)
+}
+
+/** 实时推送驱动的页面更新：进度/阶段即时刷新，无需手动点「刷新」。 */
+watch(realtimeOtaProgress, (pushed) => {
+  if (!pushed) return
+  applyOtaSnapshot(pushed)
+  handleOtaResult(pushed)
+})
+
+/** 仅在升级进行中才启动兜底轮询，终态立即停止，避免无意义的空转请求。 */
+watch(
+  () => otaProgress.value?.running === true,
+  (running) => {
+    if (running) scheduleOtaFallbackPolling()
+    else stopOtaFallbackPolling()
+  },
+)
+
+/** 断线重连后先拉一次快照补齐丢失的阶段（文档 11.4 / 11.5）。 */
+let wsEverConnected = false
+watch(
+  () => realtimeStore.connectionStatus,
+  (status) => {
+    if (status !== 'connected') return
+    if (wsEverConnected) {
+      otaApi.progress(deviceId.value).then((res) => applyOtaSnapshot(res)).catch(() => undefined)
+    }
+    wsEverConnected = true
+  },
+)
+
 onMounted(async () => {
   realtimeStore.connect()
   await refreshAll()
@@ -1149,6 +1264,7 @@ onMounted(async () => {
 
 onUnmounted(() => {
   stopOtaRetryPolling()
+  stopOtaFallbackPolling()
   realtimeStore.disconnect()
 })
 </script>

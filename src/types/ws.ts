@@ -69,6 +69,21 @@ export interface DeviceCommandResult {
   ackTime?: string | null
 }
 
+/**
+ * `/topic/device/{deviceId}/ota` 的 `ota_progress` 业务体（后端 OtaProgressVO 推送精简版）。
+ * 终态（success / failed）不可逆，前端需忽略之后到达的旧阶段消息。
+ */
+export interface DeviceOtaProgressPush {
+  otaState: string
+  otaStateText?: string | null
+  /** 0~100，单调递增。 */
+  progress: number
+  version?: string | null
+  commandId?: string | null
+  error?: string | null
+  reportTime?: string | null
+}
+
 export interface DeviceAlertRecord {
   id?: number
   deviceId: string

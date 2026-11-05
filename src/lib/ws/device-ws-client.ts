@@ -4,6 +4,7 @@ import { normalizeMac } from '@/utils/device'
 import type {
   DeviceAlertRecord,
   DeviceCommandResult,
+  DeviceOtaProgressPush,
   DeviceSensorRecord,
   DeviceStateMessage,
 } from '@/types/ws'
@@ -16,7 +17,7 @@ import type {
  *   - 端点：/ws（SockJS，不是原生 ws://，也绝不能加 /api 前缀）；
  *   - CONNECT 帧必须带 Authorization: Bearer <token>；
  *   - 订阅 destination 区分大小写：
- *       /topic/device/{MAC}/state | sensor | alert | command
+ *       /topic/device/{MAC}/state | sensor | alert | command | ota
  *   - MAC 必须大写、无分隔符；普通用户只能订阅已绑定设备，管理员放行；
  *   - 后端没有 @MessageMapping，前端只订阅不发送；
  *   - 重连后 STOMP 不会恢复订阅，必须在 onConnect 中重新订阅。
@@ -45,6 +46,8 @@ export interface DeviceWsHandlers {
   onAlert?: (deviceId: string, alert: DeviceAlertRecord) => void
   /** /command：控制指令执行结果（type=command_result）。 */
   onCommandResult?: (deviceId: string, result: DeviceCommandResult) => void
+  /** /ota：OTA 升级进度（type=ota_progress）。 */
+  onOtaProgress?: (deviceId: string, progress: DeviceOtaProgressPush) => void
   /** 鉴权失败（Token 无效/过期/刷新失败）：调用方应清理登录态并跳登录页。 */
   onAuthFail?: (reason: string) => void
   /** 越权订阅：不要重试，提示用户先绑定设备。 */
@@ -141,6 +144,28 @@ export function parseCommandResultPayload(body: string): DeviceCommandResult | n
     errorMsg: typeof raw['errorMsg'] === 'string' ? raw['errorMsg'] : null,
     responsePayload: isRecord(responsePayload) ? responsePayload : null,
     ackTime: typeof raw['ackTime'] === 'string' ? raw['ackTime'] : null,
+  }
+}
+
+/** /ota：data 是 OtaProgressVO 推送精简版；progress 夹取到 0~100。 */
+export function parseOtaProgressPayload(body: string): DeviceOtaProgressPush | null {
+  const raw = unwrapEnvelope(safeParse<unknown>(body))
+  if (!isRecord(raw)) return null
+
+  const otaState = raw['otaState']
+  if (typeof otaState !== 'string' || otaState.length === 0) return null
+
+  const progressValue = Number(raw['progress'])
+  return {
+    otaState,
+    otaStateText: typeof raw['otaStateText'] === 'string' ? raw['otaStateText'] : null,
+    progress: Number.isFinite(progressValue)
+      ? Math.min(100, Math.max(0, Math.floor(progressValue)))
+      : 0,
+    version: typeof raw['version'] === 'string' ? raw['version'] : null,
+    commandId: typeof raw['commandId'] === 'string' ? raw['commandId'] : null,
+    error: typeof raw['error'] === 'string' ? raw['error'] : null,
+    reportTime: typeof raw['reportTime'] === 'string' ? raw['reportTime'] : null,
   }
 }
 
@@ -327,7 +352,7 @@ export class DeviceWsClient {
     void client?.deactivate()
   }
 
-  /** 订阅 state/sensor/alert/command；任何一条坏消息都不影响其它主题。 */
+  /** 订阅 state/sensor/alert/command/ota；任何一条坏消息都不影响其它主题。 */
   private subscribeTopics(mac: string): void {
     if (!this.client?.connected || this.subscriptions.has(mac)) return
 
@@ -352,6 +377,11 @@ export class DeviceWsClient {
         const data = parseCommandResultPayload(message.body)
         if (!data) return
         this.handlers.onCommandResult?.(mac, data)
+      }),
+      this.client.subscribe(`${base}/ota`, (message) => {
+        const data = parseOtaProgressPayload(message.body)
+        if (!data) return
+        this.handlers.onOtaProgress?.(mac, data)
       }),
     ]
 

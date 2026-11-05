@@ -87,8 +87,10 @@ export const OTA_STATE_LABELS: Record<string, string> = {
   failed: '失败',
 }
 
-/** OTA 进行中的阶段（ACCEPTED 属于进行中，不是终态）。 */
-export const OTA_ACTIVE_STATES = ['accepted', 'downloading', 'verifying', 'flashing', 'rebooting']
+/** 终态（success/failed）之后不再接受同一 commandId 的旧消息。 */
+export function isOtaTerminalState(state?: string | null): boolean {
+  return state === 'success' || state === 'failed'
+}
 
 /** 设备控制能力（target）文案。后端无枚举校验，前端维护白名单。 */
 export const CONTROL_TARGET_LABELS: Record<string, string> = {

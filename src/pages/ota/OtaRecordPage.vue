@@ -40,9 +40,16 @@
           <div class="progress-header">
             <span>当前 OTA 状态</span>
             <el-tag v-if="progress?.otaState" :type="progressTagType">
-              {{ OTA_STATE_LABELS[progress.otaState] || progress.otaState }}
+              {{
+                progress.otaStateText ||
+                OTA_STATE_LABELS[progress.otaState] ||
+                progress.otaState
+              }}
             </el-tag>
             <el-tag v-else type="info">无进行中的升级</el-tag>
+            <el-tag v-if="progress?.running" type="warning" effect="plain" size="small">
+              升级进行中
+            </el-tag>
           </div>
           <el-progress
             :percentage="Math.min(Math.max(progress?.otaProgress ?? 0, 0), 100)"
@@ -50,7 +57,10 @@
           />
           <div class="progress-meta">
             目标版本：{{ progress?.otaVersion || '-' }} ·
-            {{ formatDateTime(progress?.updateTime) }}
+            {{ formatDateTime(progress?.otaUpdateTime) }}
+          </div>
+          <div v-if="progress?.errorMsg" class="progress-meta progress-error">
+            {{ progress.errorMsg }}
           </div>
         </el-card>
 
@@ -109,10 +119,11 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { deviceApi } from '@/features/device/api/deviceApi'
 import { otaApi } from '@/features/ota/api/otaApi'
+import { useDeviceRealtimeStore } from '@/stores/useDeviceRealtimeStore'
 import type { Device } from '@/types/device'
 import type { OtaProgressVO, OtaRecordVO } from '@/types/ota'
 import { OTA_STATE_LABELS, formatDateTime } from '@/utils/device'
@@ -120,12 +131,19 @@ import { COMMAND_STATUS_LABELS, COMMAND_STATUS_TAG_TYPES } from '@/utils/status'
 
 /**
  * ============================================================================
- * 用户 OTA 升级记录（文档 8.5）
+ * 用户 OTA 升级记录（文档 8.5 / 6.8）
  * ============================================================================
  * devices 来自 GET /user/devices/my（pageSize 100，足以覆盖个人设备）。
  * 记录接口 deviceId 必填，因此未选择设备时不发请求。
+ *
+ * 实时策略（企业级）：
+ *   1. WS 推送 `ota_progress` 为主，进度即时刷新，无需手动点「刷新」；
+ *   2. REST `GET /user/ota/progress/{deviceId}` 作为兜底快照（弱网/未连上时）；
+ *   3. 合并规则：WS 已进入终态优先；否则取进度更大者，避免旧快照覆盖新进度；
+ *   4. 终态到达后自动刷新升级记录列表，并断开该页额外的订阅依赖（页面卸载时统一断开）。
  * ============================================================================
  */
+const realtimeStore = useDeviceRealtimeStore()
 const devices = ref<Device[]>([])
 const devicesLoading = ref(false)
 const selectedDeviceId = ref('')
@@ -135,6 +153,99 @@ const total = ref(0)
 const recordsLoading = ref(false)
 const progress = ref<OtaProgressVO | null>(null)
 const query = reactive({ pageNum: 1, pageSize: 10 })
+
+/** 当前选中设备的实时 OTA 进度（无推送时为 null，回退 REST 快照）。 */
+const realtimeProgress = computed(() => realtimeStore.getOtaProgress(selectedDeviceId.value))
+
+/**
+ * 快照 / 实时合并：终态优先，其次进度更大者。
+ * 避免页面刷新拿到的旧快照把 WS 已推送的更新进度覆盖回去。
+ *
+ * 注意：后端在指令 TIMEOUT 时会清空 device_info 的 OTA 字段且**不推送**，
+ * 因此 REST 返回 `otaState=null` 时以快照为准，防止页面永久停留在「升级中」。
+ */
+const applySnapshot = (snapshot: OtaProgressVO | null) => {
+  if (snapshot && !snapshot.otaState) {
+    progress.value = null
+    return
+  }
+
+  const pushed = realtimeProgress.value
+  if (!pushed) {
+    progress.value = snapshot
+    return
+  }
+  if (
+    !snapshot ||
+    pushed.finished ||
+    (!snapshot.finished && (pushed.otaProgress ?? 0) >= (snapshot.otaProgress ?? 0))
+  ) {
+    progress.value = pushed
+    return
+  }
+  progress.value = snapshot
+}
+
+/** 实时推送驱动的进度刷新：终态时同步刷新记录列表。 */
+watch(realtimeProgress, (pushed) => {
+  if (!pushed) return
+  applySnapshot(pushed)
+  if (pushed.finished) void loadRecords()
+})
+
+/**
+ * 升级进行中兜底轮询（文档 11.5）：WS 为主通道，每 2s 拉一次 /progress。
+ * 覆盖指令 TIMEOUT（后端清空 OTA 字段且不推送）与断线期间丢失的阶段。
+ */
+const OTA_FALLBACK_POLL_INTERVAL = 2000
+let fallbackTimer: ReturnType<typeof setTimeout> | null = null
+
+const stopFallbackPolling = () => {
+  if (fallbackTimer) {
+    clearTimeout(fallbackTimer)
+    fallbackTimer = null
+  }
+}
+
+const pollProgressFallback = async () => {
+  fallbackTimer = null
+  if (!selectedDeviceId.value) return
+
+  try {
+    applySnapshot(await otaApi.progress(selectedDeviceId.value))
+  } catch {
+    // 单次失败不终止轮询，由下一次重试继续
+  }
+
+  const current = progress.value
+  if (current?.finished) void loadRecords()
+  if (current?.running) scheduleFallbackPolling()
+}
+
+function scheduleFallbackPolling() {
+  if (fallbackTimer) return
+  fallbackTimer = setTimeout(() => void pollProgressFallback(), OTA_FALLBACK_POLL_INTERVAL)
+}
+
+/** 仅在升级进行中才启动兜底轮询，终态立即停止，避免无意义的空转请求。 */
+watch(
+  () => progress.value?.running === true,
+  (running) => {
+    if (running) scheduleFallbackPolling()
+    else stopFallbackPolling()
+  },
+)
+
+/** 断线重连后先拉一次快照补齐丢失的阶段（文档 11.4 / 11.5）。 */
+let wsEverConnected = false
+watch(
+  () => realtimeStore.connectionStatus,
+  (status) => {
+    if (status !== 'connected') return
+    if (wsEverConnected) void loadProgress()
+    wsEverConnected = true
+  },
+)
 
 const progressTagType = computed<'success' | 'warning' | 'danger' | 'info'>(() => {
   const state = progress.value?.otaState
@@ -163,9 +274,10 @@ const loadDevices = async () => {
 const loadProgress = async () => {
   if (!selectedDeviceId.value) return
   try {
-    progress.value = await otaApi.progress(selectedDeviceId.value)
+    applySnapshot(await otaApi.progress(selectedDeviceId.value))
   } catch {
-    progress.value = null
+    // 兜底快照失败时保留 WS 已推送的数据，避免进度卡片闪回空态。
+    if (!realtimeProgress.value) progress.value = null
   }
 }
 
@@ -195,6 +307,11 @@ const handleSearch = () => {
 
 const handleDeviceChange = async () => {
   query.pageNum = 1
+  // 切换设备时先登记订阅，保证后续 ACK/进度推送不丢失（未连接时仅登记）。
+  if (selectedDeviceId.value) realtimeStore.syncDevices([selectedDeviceId.value])
+  // 清空上一台设备的进度并停止兜底轮询，避免串号展示。
+  stopFallbackPolling()
+  progress.value = null
   await Promise.all([loadProgress(), loadRecords()])
 }
 
@@ -209,9 +326,15 @@ const handleRetry = async () => {
 }
 
 onMounted(async () => {
+  realtimeStore.connect()
   await loadDevices()
   if (!selectedDeviceId.value) return
   await handleDeviceChange()
+})
+
+onUnmounted(() => {
+  stopFallbackPolling()
+  realtimeStore.disconnect()
 })
 </script>
 
@@ -251,6 +374,9 @@ onMounted(async () => {
   margin-top: 8px;
   font-size: 12px;
   color: #909399;
+}
+.progress-error {
+  color: #f56c6c;
 }
 .pagination-container {
   margin-top: 16px;

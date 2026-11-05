@@ -11,10 +11,12 @@ import {
 import { getFreshAccessToken } from '@/lib/request'
 import { clearAuthStorage, getAccessToken } from '@/lib/auth-storage'
 import { commandApi } from '@/features/command/api/commandApi'
-import { normalizeMac } from '@/utils/device'
+import { OTA_STATE_LABELS, isOtaTerminalState, normalizeMac } from '@/utils/device'
+import type { OtaProgressVO } from '@/types/ota'
 import type {
   DeviceAlertRecord,
   DeviceCommandResult,
+  DeviceOtaProgressPush,
   DeviceSensorRecord,
   DeviceStateMessage,
 } from '@/types/ws'
@@ -27,7 +29,8 @@ import type {
  *   1. 管理唯一一条 STOMP over SockJS 连接（全应用共用一个实例）；
  *   2. 按设备维护 state / sensor / alert 三份实时数据；
  *   3. 页面只负责订阅设备列表与渲染，连接/重连/鉴权细节全部内聚在这里；
- *   4. 追踪控制指令执行结果（command_result + 10s 轮询兜底，文档 6.7/6.8）。
+ *   4. 追踪控制指令执行结果（command_result + 10s 轮询兜底，文档 6.7/6.8）；
+ *   5. 维护 OTA 实时进度（ota_progress，文档 6.8 / 8.5）。
  *
  * 数据策略：
  *   - state 为增量消息，按 target+channel 覆盖，最多保留 32 条目标；
@@ -64,6 +67,9 @@ export const useDeviceRealtimeStore = defineStore('device-realtime', () => {
   /** 最近一条指令执行结果（command_result），供页面按需展示。 */
   const lastCommandResult = shallowRef<DeviceCommandResult | null>(null)
   const lastCommandResultAt = ref(0)
+  /** 按设备维护 OTA 实时进度（mac 大写）。 */
+  const otaProgressByDevice = ref<Record<string, OtaProgressVO>>({})
+  const lastOtaProgressAt = ref(0)
 
   /**
    * 指令结果追踪器：实时推送优先，10s 超时后走 `GET /user/commands/{id}` 兜底。
@@ -126,6 +132,51 @@ export const useDeviceRealtimeStore = defineStore('device-realtime', () => {
     lastAlert.value = alert
     lastAlertAt.value = Date.now()
     lastMessageAt.value = Date.now()
+  }
+
+  /**
+   * OTA 进度合并规则（文档 6.8）：
+   *   - 同一 commandId 内 progress 单调递增，避免错序消息导致进度回退；
+   *   - 终态（success/failed）不可逆：同 commandId 的后续旧消息直接丢弃；
+   *   - 新 commandId 视为新一轮升级，重置进度与终态。
+   */
+  const handleOtaProgress = (_mac: string, payload: DeviceOtaProgressPush) => {
+    const mac = normalizeMac(_mac)
+    const prev = otaProgressByDevice.value[mac]
+    const sameCommand = !payload.commandId || !prev?.commandId || payload.commandId === prev.commandId
+
+    if (prev && sameCommand && isOtaTerminalState(prev.otaState)) return
+
+    const progress = prev && sameCommand
+      ? Math.max(prev.otaProgress ?? 0, payload.progress)
+      : payload.progress
+    const terminal = isOtaTerminalState(payload.otaState)
+
+    const next: OtaProgressVO = {
+      deviceId: mac,
+      otaState: payload.otaState,
+      otaStateText: payload.otaStateText || OTA_STATE_LABELS[payload.otaState] || payload.otaState,
+      otaProgress: terminal ? Math.max(progress, 100) : progress,
+      otaVersion: payload.version ?? prev?.otaVersion ?? null,
+      commandId: payload.commandId ?? prev?.commandId ?? null,
+      commandStatus: prev?.commandStatus ?? null,
+      commandStatusText: prev?.commandStatusText ?? null,
+      errorMsg: payload.error ?? null,
+      otaUpdateTime: payload.reportTime ?? new Date().toISOString(),
+      running: !terminal,
+      finished: terminal,
+      serverTime: new Date().toISOString(),
+    }
+
+    otaProgressByDevice.value = { ...otaProgressByDevice.value, [mac]: next }
+    lastOtaProgressAt.value = Date.now()
+    lastMessageAt.value = Date.now()
+  }
+
+  /** 读取某设备的实时 OTA 进度；无推送时返回 null，页面回退到 REST 快照。 */
+  const getOtaProgress = (deviceId: string): OtaProgressVO | null => {
+    if (!deviceId) return null
+    return otaProgressByDevice.value[normalizeMac(deviceId)] ?? null
   }
 
   const handleCommandResult = (_mac: string, result: DeviceCommandResult) => {
@@ -196,6 +247,7 @@ export const useDeviceRealtimeStore = defineStore('device-realtime', () => {
       onSensor: handleSensor,
       onAlert: handleAlert,
       onCommandResult: handleCommandResult,
+      onOtaProgress: handleOtaProgress,
       onAuthFail: handleAuthFail,
       onSubscriptionDenied: handleSubscriptionDenied,
     })
@@ -262,12 +314,14 @@ export const useDeviceRealtimeStore = defineStore('device-realtime', () => {
     lastAlertAt,
     lastCommandResult,
     lastCommandResultAt,
+    lastOtaProgressAt,
     dataByDevice,
     connect,
     disconnect,
     syncDevices,
     subscribeDevice,
     waitForCommandResult,
+    getOtaProgress,
     getStates,
     getSensors,
     getAlerts,
