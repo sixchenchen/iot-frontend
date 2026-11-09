@@ -23,6 +23,18 @@ import { AUTH_STORAGE_KEYS, clearAuthStorage, getAccessToken, getTokenExpiry, is
 interface UserInfo {
   username: string
   nickname: string
+  /** 头像 URL：来源于后端数据库（LoginResponse / GET /user/profile），并非本浏览器独有。 */
+  avatar: string | null
+}
+
+/** 兼容历史本地快照（旧版本没有 avatar 字段），统一补齐为 null。 */
+function normalizeUserInfo(value: UserInfo | null): UserInfo | null {
+  if (!value) return null
+  return {
+    username: value.username,
+    nickname: value.nickname,
+    avatar: value.avatar ?? null,
+  }
 }
 
 export const useAuthStore = defineStore('auth', () => {
@@ -31,7 +43,9 @@ export const useAuthStore = defineStore('auth', () => {
    * readJSON 内部已做 try/catch：脏数据会被删除并降级为默认值，
    * 不会再出现「localStorage 被改坏 → 启动白屏」的问题。
    */
-  const user = ref<UserInfo | null>(readJSON<UserInfo | null>(AUTH_STORAGE_KEYS.userInfo, null))
+  const user = ref<UserInfo | null>(
+    normalizeUserInfo(readJSON<UserInfo | null>(AUTH_STORAGE_KEYS.userInfo, null)),
+  )
   const roles = ref<string[]>(readJSON<string[]>(AUTH_STORAGE_KEYS.roles, []))
   const permCodes = ref<string[]>(readJSON<string[]>(AUTH_STORAGE_KEYS.permissions, []))
   const token = ref<string | null>(getAccessToken())
@@ -96,9 +110,11 @@ export const useAuthStore = defineStore('auth', () => {
     expiresAt.value = getTokenExpiry()
 
     // 2. 同步内存状态（后端未返回 username/nickname 时回退到登录输入）。
+    //    avatar 来自数据库持久化字段：即使清空浏览器数据，重新登录仍能恢复。
     const userInfo: UserInfo = {
       username: res.username || username,
       nickname: res.nickname || username,
+      avatar: res.avatar ?? null,
     }
     user.value = userInfo
     roles.value = Array.isArray(res.roles) ? res.roles : []
@@ -156,7 +172,7 @@ export const useAuthStore = defineStore('auth', () => {
         return
       }
       if (event.key === AUTH_STORAGE_KEYS.userInfo) {
-        user.value = readJSON<UserInfo | null>(AUTH_STORAGE_KEYS.userInfo, null)
+        user.value = normalizeUserInfo(readJSON<UserInfo | null>(AUTH_STORAGE_KEYS.userInfo, null))
         roles.value = readJSON<string[]>(AUTH_STORAGE_KEYS.roles, [])
         permCodes.value = readJSON<string[]>(AUTH_STORAGE_KEYS.permissions, [])
         token.value = getAccessToken()

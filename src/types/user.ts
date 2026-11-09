@@ -9,7 +9,7 @@ import type { PageQuery } from '@/types/api'
  * ============================================================================
  */
 
-/** GET /user/profile 的响应（avatar 当前恒为 null，由前端本地保存）。 */
+/** GET /user/profile 的响应（avatar 已由 `sys_user.avatar` 持久化）。 */
 export interface UserProfileVO {
   userId: number
   username: string
@@ -30,6 +30,8 @@ export interface UserProfileUpdateRequest {
   nickname?: string | null
   email?: string | null
   phone?: string | null
+  /** 上传接口返回的 `/files/avatar/{uuid}.{ext}`；空串表示清除头像。 */
+  avatar?: string | null
 }
 
 /** PUT /user/password 的请求体：修改成功后后端会撤销全部 RefreshToken。 */

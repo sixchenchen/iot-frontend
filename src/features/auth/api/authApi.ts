@@ -37,6 +37,8 @@ export interface LoginResponse {
   token: string
   username: string
   nickname: string
+  /** 头像 URL（数据库持久化）；未设置时为 null。 */
+  avatar: string | null
   refreshToken: string
   lastLoginTime: string | null
   roles: string[]

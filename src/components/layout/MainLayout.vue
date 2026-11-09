@@ -30,6 +30,9 @@
           <el-tag :type="healthTagType" size="small" effect="plain">{{ healthLabel }}</el-tag>
         </el-tooltip>
         <div class="user-info">
+          <el-avatar :size="30" :src="authStore.user?.avatar || undefined" class="header-avatar">
+            <el-icon :size="16"><UserFilled /></el-icon>
+          </el-avatar>
           <el-button link type="primary" @click="router.push({ name: 'UserCenter' })">
             个人中心
           </el-button>
@@ -50,6 +53,7 @@
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { UserFilled } from '@element-plus/icons-vue'
 import { useAuthStore } from '@/stores/useAuthStore'
 import { commonApi } from '@/features/common/api/commonApi'
 import { routes } from '@/router/routes'
@@ -157,6 +161,10 @@ const handleLogout = async () => {
   display: flex;
   align-items: center;
   gap: 15px;
+}
+.header-avatar {
+  flex-shrink: 0;
+  background-color: #f0f2f5;
 }
 .main {
   background-color: #f0f2f5;

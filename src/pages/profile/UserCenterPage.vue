@@ -22,7 +22,9 @@
             >
               <el-button type="primary" plain :loading="avatarUploading">更换头像</el-button>
             </el-upload>
-            <p class="hint">仅支持 JPG / PNG / WebP，且不超过 2MB。头像 URL 暂存于当前浏览器。</p>
+            <p class="hint">
+              仅支持 JPG / PNG / WebP，且不超过 2MB。头像会保存到账号，清除浏览器数据后重新登录仍会显示。
+            </p>
           </div>
 
           <el-descriptions v-if="profile" :column="1" border class="account-info">
@@ -164,7 +166,7 @@
 </template>
 
 <script setup lang="ts">
-import { reactive, ref } from 'vue'
+import { computed, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, type FormInstance, type FormRules, type UploadRequestOptions } from 'element-plus'
 import { UserFilled } from '@element-plus/icons-vue'
@@ -182,8 +184,10 @@ import { formatDateTime } from '@/utils/device'
  * 接口：GET/PUT /user/profile、PUT /user/password、GET /user/login-logs、
  *       POST /common/upload/avatar。
  *
- * 已知限制：后端 sys_user 没有 avatar 字段，profile.avatar 恒为 null。
- * 因此上传成功后只把 URL 保存在当前浏览器，并明确提示用户。
+ * 头像已由后端 `sys_user.avatar` 持久化（文档 8.10）：
+ *   1. POST /common/upload/avatar 拿到 `/files/avatar/{uuid}.{ext}`；
+ *   2. PUT /user/profile 提交 `{ avatar: url }` 落库；
+ *   3. 登录响应与资料接口都会回传该地址，清除浏览器数据后依然可恢复。
  * ============================================================================
  */
 const router = useRouter()
@@ -223,11 +227,26 @@ const profileRules: FormRules = {
   phone: [{ validator: validatePhone, trigger: 'blur' }],
 }
 
+/**
+ * 把后端资料同步到 Header 与本地快照：
+ * 头像/昵称以数据库为准，避免「资料页已更新、顶部仍是旧值」。
+ */
+const syncAuthUser = (source: Pick<UserProfileVO, 'username' | 'nickname' | 'avatar'>) => {
+  const userInfo = {
+    username: source.username,
+    nickname: source.nickname || source.username,
+    avatar: source.avatar ?? null,
+  }
+  authStore.user = userInfo
+  writeJSON(AUTH_STORAGE_KEYS.userInfo, userInfo)
+}
+
 const fetchProfile = async () => {
   profileLoading.value = true
   try {
     profile.value = await userApi.getProfile()
     resetProfileForm()
+    syncAuthUser(profile.value)
   } catch {
     profile.value = null
   } finally {
@@ -258,14 +277,7 @@ const submitProfile = async () => {
     })
     profile.value = updated
     resetProfileForm()
-
-    // 同步 Header 展示的昵称与本地快照，避免资料页与顶部信息不一致。
-    const userInfo = {
-      username: updated.username,
-      nickname: updated.nickname || updated.username,
-    }
-    authStore.user = userInfo
-    writeJSON(AUTH_STORAGE_KEYS.userInfo, userInfo)
+    syncAuthUser(updated)
 
     ElMessage.success('资料已更新')
   } catch {
@@ -275,16 +287,10 @@ const submitProfile = async () => {
   }
 }
 
-// ==================== 头像上传（仅本地保存） ====================
-const avatarUrl = ref('')
+// ==================== 头像（数据库持久化） ====================
+/** 资料接口优先；首屏资料未返回时回退登录响应里的 avatar，避免闪烁。 */
+const avatarUrl = computed(() => profile.value?.avatar || authStore.user?.avatar || '')
 const avatarUploading = ref(false)
-
-const avatarStorageKey = (): string =>
-  `iot:avatar:${profile.value?.username || authStore.user?.username || 'anonymous'}`
-
-const loadAvatar = () => {
-  avatarUrl.value = localStorage.getItem(avatarStorageKey()) || ''
-}
 
 const beforeAvatarUpload = (file: File): boolean => {
   const allowed = ['image/jpeg', 'image/png', 'image/webp']
@@ -302,10 +308,12 @@ const beforeAvatarUpload = (file: File): boolean => {
 const handleAvatarUpload = async (options: UploadRequestOptions) => {
   avatarUploading.value = true
   try {
-    const res = await commonApi.uploadAvatar(options.file)
-    avatarUrl.value = res.url
-    localStorage.setItem(avatarStorageKey(), res.url)
-    ElMessage.success('头像上传成功（已保存在当前浏览器）')
+    // 1. 上传文件 → 拿到后端静态地址；2. 写入资料落库，登录/刷新都会回传。
+    const upload = await commonApi.uploadAvatar(options.file)
+    const updated = await userApi.updateProfile({ avatar: upload.url })
+    profile.value = updated
+    syncAuthUser(updated)
+    ElMessage.success('头像已保存到账号')
   } catch {
     // 失败原因由统一请求层提示
   } finally {
@@ -406,7 +414,7 @@ const submitPassword = async () => {
   }
 }
 
-fetchProfile().then(loadAvatar)
+fetchProfile()
 fetchLoginLogs()
 </script>
 
