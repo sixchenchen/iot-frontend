@@ -53,15 +53,23 @@
       <div class="bindings-block">
         <div class="section-header">
           <h4>绑定用户</h4>
-          <el-button size="small" :loading="bindingsLoading" @click="loadBindings">刷新</el-button>
+          <div>
+            <ColumnSettings
+              v-model:hidden="hiddenBindingColumns"
+              :columns="BINDING_COLUMNS"
+              @show-all="showAllBindingColumns"
+              @reset="resetBindingColumns"
+            />
+            <el-button size="small" :loading="bindingsLoading" @click="loadBindings">刷新</el-button>
+          </div>
         </div>
         <el-table :data="bindings" v-loading="bindingsLoading" stripe>
           <template #empty><el-empty description="当前无绑定用户" :image-size="60" /></template>
-          <el-table-column prop="username" label="用户名" min-width="140" />
-          <el-table-column label="昵称" min-width="140">
+          <el-table-column v-if="!isBindingHidden('username')" prop="username" label="用户名" min-width="140" />
+          <el-table-column v-if="!isBindingHidden('nickname')" label="昵称" min-width="140">
             <template #default="{ row }">{{ row.nickname || '-' }}</template>
           </el-table-column>
-          <el-table-column label="绑定时间" width="180">
+          <el-table-column v-if="!isBindingHidden('bindTime')" label="绑定时间" width="180">
             <template #default="{ row }">{{ formatDateTime(row.bindTime) }}</template>
           </el-table-column>
           <el-table-column label="操作" width="140" fixed="right">
@@ -139,6 +147,8 @@ import type {
 } from '@/types/device'
 import { formatDateTime, formatUptime, isDeviceOnline } from '@/utils/device'
 import { useAuthStore } from '@/stores/useAuthStore'
+import ColumnSettings from '@/components/common/ColumnSettings.vue'
+import { useColumnSettings, type ColumnOption } from '@/composables/useColumnSettings'
 
 /**
  * ============================================================================
@@ -155,6 +165,21 @@ const route = useRoute()
 const router = useRouter()
 const authStore = useAuthStore()
 const realtimeStore = useDeviceRealtimeStore()
+
+/** 列配置（storageKey: admin-device-bindings）；操作列固定显示，避免隐藏后无法操作。 */
+const BINDING_COLUMNS: ColumnOption[] = [
+  { key: 'username', label: '用户名' },
+  { key: 'nickname', label: '昵称' },
+  { key: 'bindTime', label: '绑定时间' },
+  { key: 'actions', label: '操作', fixed: true },
+]
+
+const {
+  hidden: hiddenBindingColumns,
+  isHidden: isBindingHidden,
+  showAll: showAllBindingColumns,
+  reset: resetBindingColumns,
+} = useColumnSettings('admin-device-bindings', BINDING_COLUMNS)
 
 const deviceRowId = computed(() => Number(route.params.id))
 const detail = ref<Device | null>(null)

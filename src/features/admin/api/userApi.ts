@@ -2,6 +2,7 @@ import { request } from '@/lib/request'
 import type { PageQuery, PageResult } from '@/types/api'
 import type { Device } from '@/types/device'
 import type {
+  AdminUserCreateRequest,
   AdminUserDetailVO,
   AdminUserQuery,
   AdminUserUpdateRequest,
@@ -36,6 +37,14 @@ export const adminUserApi = {
     request<AdminUserDetailVO>({
       url: `/admin/users/${id}`,
       method: 'get',
+    }),
+
+  /** POST /admin/users —— 新增用户并分配角色，返回新用户 ID。 */
+  create: (data: AdminUserCreateRequest) =>
+    request<number>({
+      url: '/admin/users',
+      method: 'post',
+      data,
     }),
 
   /** PUT /admin/users/{id} —— 编辑昵称/邮箱/手机号。 */

@@ -52,39 +52,51 @@
         <el-form-item>
           <el-button type="primary" @click="handleSearch">查询</el-button>
           <el-button @click="handleReset">重置</el-button>
+          <ColumnSettings
+            v-model:hidden="hiddenColumns"
+            :columns="ALERT_COLUMNS"
+            @show-all="showAllColumns"
+            @reset="resetColumns"
+          />
         </el-form-item>
       </el-form>
 
       <el-table :data="alerts" v-loading="loading" stripe>
         <template #empty><el-empty description="暂无告警" :image-size="60" /></template>
-        <el-table-column label="级别" width="90" align="center">
+        <el-table-column v-if="!isHidden('level')" label="级别" width="90" align="center">
           <template #default="{ row }">
             <el-tag :type="ALERT_LEVEL_TAG_TYPES[row.alertLevel] || 'info'" size="small">
               {{ ALERT_LEVEL_LABELS[row.alertLevel] || row.alertLevel }}
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="deviceId" label="设备 MAC" width="150" />
-        <el-table-column prop="alertType" label="类型" width="130">
+        <el-table-column v-if="!isHidden('deviceId')" prop="deviceId" label="设备 MAC" width="150" />
+        <el-table-column v-if="!isHidden('alertType')" prop="alertType" label="类型" width="130">
           <template #default="{ row }">{{ row.alertType || '-' }}</template>
         </el-table-column>
-        <el-table-column prop="message" label="告警内容" min-width="180" show-overflow-tooltip>
+        <el-table-column
+          v-if="!isHidden('message')"
+          prop="message"
+          label="告警内容"
+          min-width="180"
+          show-overflow-tooltip
+        >
           <template #default="{ row }">{{ row.message || '-' }}</template>
         </el-table-column>
-        <el-table-column label="数值/阈值" width="130">
+        <el-table-column v-if="!isHidden('valueThreshold')" label="数值/阈值" width="130">
           <template #default="{ row }">{{ row.value ?? '-' }} / {{ row.threshold ?? '-' }}</template>
         </el-table-column>
-        <el-table-column label="状态" width="100" align="center">
+        <el-table-column v-if="!isHidden('status')" label="状态" width="100" align="center">
           <template #default="{ row }">
             <el-tag :type="ALERT_STATUS_TAG_TYPES[row.status ?? 0] || 'info'" size="small">
               {{ ALERT_STATUS_LABELS[row.status ?? 0] || row.status }}
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="发生时间" width="170">
+        <el-table-column v-if="!isHidden('occurredTime')" label="发生时间" width="170">
           <template #default="{ row }">{{ formatDateTime(row.timestamp || row.createTime) }}</template>
         </el-table-column>
-        <el-table-column v-if="isAdmin" label="处理人" width="110">
+        <el-table-column v-if="isAdmin && !isHidden('handledBy')" label="处理人" width="110">
           <template #default="{ row }">{{ row.handledBy || '-' }}</template>
         </el-table-column>
         <el-table-column label="操作" width="150" fixed="right">
@@ -154,6 +166,8 @@ import {
   ALERT_STATUS_LABELS,
   ALERT_STATUS_TAG_TYPES,
 } from '@/utils/status'
+import ColumnSettings from '@/components/common/ColumnSettings.vue'
+import { useColumnSettings, type ColumnOption } from '@/composables/useColumnSettings'
 
 /**
  * ============================================================================
@@ -163,6 +177,27 @@ import {
  * 管理模式：GET /admin/alerts、PUT /admin/alerts/{id}/status（1 确认 / 2 解决）
  * ============================================================================
  */
+
+/** 可配置列；操作列固定显示，「我的/全局」两个路由共用同一份配置。 */
+const ALERT_COLUMNS: ColumnOption[] = [
+  { key: 'level', label: '级别' },
+  { key: 'deviceId', label: '设备 MAC' },
+  { key: 'alertType', label: '类型' },
+  { key: 'message', label: '告警内容' },
+  { key: 'valueThreshold', label: '数值/阈值' },
+  { key: 'status', label: '状态' },
+  { key: 'occurredTime', label: '发生时间' },
+  { key: 'handledBy', label: '处理人' },
+  { key: 'actions', label: '操作', fixed: true },
+]
+
+const {
+  hidden: hiddenColumns,
+  isHidden,
+  showAll: showAllColumns,
+  reset: resetColumns,
+} = useColumnSettings('alert-list', ALERT_COLUMNS)
+
 const route = useRoute()
 const isAdmin = computed(() => route.name === 'AdminAlerts')
 

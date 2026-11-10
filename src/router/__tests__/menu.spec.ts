@@ -25,6 +25,7 @@ describe('buildMenus', () => {
       'control',
       'monitor',
       'ota',
+      'access',
       'system',
     ])
     expect(groups.map((group) => group.title)).toEqual([
@@ -33,6 +34,7 @@ describe('buildMenus', () => {
       '指令控制',
       '监控告警',
       '固件升级',
+      '权限中心',
       '系统管理',
     ])
   })

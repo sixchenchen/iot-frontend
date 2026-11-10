@@ -52,38 +52,50 @@
         <el-form-item>
           <el-button type="primary" @click="handleSearch">查询</el-button>
           <el-button @click="handleReset">重置</el-button>
+          <ColumnSettings
+            v-model:hidden="hiddenColumns"
+            :columns="AUDIT_LOG_COLUMNS"
+            @show-all="showAllColumns"
+            @reset="resetColumns"
+          />
         </el-form-item>
       </el-form>
 
       <el-table :data="logs" v-loading="loading" stripe>
         <template #empty><el-empty description="暂无审计记录" :image-size="60" /></template>
-        <el-table-column prop="createTime" label="时间" width="170">
+        <el-table-column v-if="!isHidden('createTime')" prop="createTime" label="时间" width="170">
           <template #default="{ row }">{{ formatDateTime(row.createTime) }}</template>
         </el-table-column>
-        <el-table-column prop="operator" label="操作人" width="120">
+        <el-table-column v-if="!isHidden('operator')" prop="operator" label="操作人" width="120">
           <template #default="{ row }">{{ row.operator || 'SYSTEM' }}</template>
         </el-table-column>
-        <el-table-column label="来源" width="100">
+        <el-table-column v-if="!isHidden('source')" label="来源" width="100">
           <template #default="{ row }">
             {{ row.source ? COMMAND_SOURCE_LABELS[row.source] || row.source : '-' }}
           </template>
         </el-table-column>
-        <el-table-column prop="deviceId" label="设备 MAC" width="150" />
-        <el-table-column label="动作/目标" width="160">
+        <el-table-column v-if="!isHidden('deviceId')" prop="deviceId" label="设备 MAC" width="150" />
+        <el-table-column v-if="!isHidden('actionTarget')" label="动作/目标" width="160">
           <template #default="{ row }">
             {{ row.action }} / {{ CONTROL_TARGET_LABELS[row.target] || row.target }}
             <span v-if="row.channel != null">#{{ row.channel }}</span>
           </template>
         </el-table-column>
-        <el-table-column label="状态" width="110" align="center">
+        <el-table-column v-if="!isHidden('status')" label="状态" width="110" align="center">
           <template #default="{ row }">
             <el-tag :type="COMMAND_STATUS_TAG_TYPES[row.status] || 'info'" size="small">
               {{ COMMAND_STATUS_LABELS[row.status] || row.status }}
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="commandId" label="指令 ID" min-width="200" show-overflow-tooltip />
-        <el-table-column label="参数" min-width="180">
+        <el-table-column
+          v-if="!isHidden('commandId')"
+          prop="commandId"
+          label="指令 ID"
+          min-width="200"
+          show-overflow-tooltip
+        />
+        <el-table-column v-if="!isHidden('params')" label="参数" min-width="180">
           <template #default="{ row }">
             <span class="mono">{{ row.params ? JSON.stringify(row.params) : '-' }}</span>
           </template>
@@ -115,11 +127,33 @@ import {
   COMMAND_STATUS_LABELS,
   COMMAND_STATUS_TAG_TYPES,
 } from '@/utils/status'
+import ColumnSettings from '@/components/common/ColumnSettings.vue'
+import { useColumnSettings, type ColumnOption } from '@/composables/useColumnSettings'
 
 /**
  * 管理端指令审计（GET /admin/audit-logs）。
  * 复用 DeviceCommand 结构；筛选字段与后端 Query 参数一一对应。
  */
+
+/** 可配置列；本表无操作列。 */
+const AUDIT_LOG_COLUMNS: ColumnOption[] = [
+  { key: 'createTime', label: '时间' },
+  { key: 'operator', label: '操作人' },
+  { key: 'source', label: '来源' },
+  { key: 'deviceId', label: '设备 MAC' },
+  { key: 'actionTarget', label: '动作/目标' },
+  { key: 'status', label: '状态' },
+  { key: 'commandId', label: '指令 ID' },
+  { key: 'params', label: '参数' },
+]
+
+const {
+  hidden: hiddenColumns,
+  isHidden,
+  showAll: showAllColumns,
+  reset: resetColumns,
+} = useColumnSettings('admin-audit-logs', AUDIT_LOG_COLUMNS)
+
 const logs = ref<DeviceCommand[]>([])
 const total = ref(0)
 const loading = ref(false)

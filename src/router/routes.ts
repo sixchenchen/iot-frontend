@@ -3,6 +3,7 @@ import {
   Bell,
   DataLine,
   Document,
+  Key,
   Monitor,
   Odometer,
   Setting,
@@ -31,7 +32,7 @@ import {
  *
  * 菜单分组（meta.group / meta.order）按物联网业务域划分，与 smart_device 库表族对应：
  *   overview 运营总览 | device 设备资产 | control 指令控制
- *   monitor 监控告警  | ota 固件升级    | system 系统管理
+ *   monitor 监控告警  | ota 固件升级    | access 权限中心 | system 系统管理
  * 新增页面时只需补 group/order，菜单会自动归位，无需改动布局组件。
  * ============================================================================
  */
@@ -145,7 +146,26 @@ export const routes: RouteRecordRaw[] = [
         path: 'admin/users',
         name: 'UserManage',
         component: () => import('@/pages/admin/UserManagePage.vue'),
-        meta: { title: '用户管理', icon: User, roles: ['ADMIN'], group: 'system', order: 10 },
+        meta: {
+          title: '用户管理',
+          icon: User,
+          roles: ['ADMIN'],
+          group: 'access',
+          order: 10,
+        },
+      },
+      {
+        path: 'admin/permissions',
+        name: 'PermissionManage',
+        component: () => import('@/pages/admin/PermissionManagePage.vue'),
+        // 页面含角色与权限两个页签，各自按钮权限码不同，页面级只校验角色。
+        meta: {
+          title: '权限管理',
+          icon: Key,
+          roles: ['ADMIN'],
+          group: 'access',
+          order: 20,
+        },
       },
       {
         path: 'admin/commands',

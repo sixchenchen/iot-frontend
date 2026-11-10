@@ -12,6 +12,7 @@ import { test, expect, type Page } from '@playwright/test'
  */
 
 const LOGIN_API = '**/api/auth/login'
+const CAPTCHA_API = '**/api/auth/captcha'
 
 const EMPTY_PAGE = {
   code: 200,
@@ -33,8 +34,18 @@ const ADMIN_PERMISSIONS = [
   'ota:create',
   'ota:cancel',
   'user:list',
+  'user:create',
   'user:update',
   'user:delete',
+  'role:list',
+  'role:create',
+  'role:update',
+  'role:delete',
+  'role:assign-permission',
+  'permission:list',
+  'permission:create',
+  'permission:update',
+  'permission:delete',
   'alert:list',
   'alert:handle',
 ]
@@ -73,6 +84,22 @@ async function resetStorage(page: Page): Promise<void> {
     }
   })
   await page.route('**/api/auth/logout', (route) => route.fulfill({ json: { code: 200, data: null } }))
+  // 登录页挂载即请求图片验证码；未 mock 会走真实网络导致登录按钮禁用。
+  await page.route(CAPTCHA_API, (route) =>
+    route.fulfill({
+      json: {
+        code: 200,
+        message: 'ok',
+        data: {
+          captchaId: 'mock-captcha-id',
+          captchaType: 'image',
+          imageBase64:
+            'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+          expireIn: 300,
+        },
+      },
+    }),
+  )
   // 健康检查为公开接口，固定返回 UP，避免 Headar 状态标签影响断言。
   await page.route('**/actuator/health', (route) => route.fulfill({ json: { status: 'UP' } }))
   await page.route('**/api/common/dictionaries', (route) =>
@@ -117,13 +144,17 @@ async function mockLogin(page: Page, options: LoginMockOptions = {}): Promise<vo
       },
     }),
   )
+
+  // 验证码已在 resetStorage 中统一 mock，这里只负责登录接口。
 }
 
-/** 打开登录页并提交账号密码。 */
+/** 打开登录页并提交账号密码（含图片验证码）。 */
 async function login(page: Page, username = 'admin', password = 'admin12345'): Promise<void> {
   await page.goto('/login')
   await page.getByPlaceholder('请输入用户名').fill(username)
   await page.getByPlaceholder('请输入密码').fill(password)
+  await expect(page.getByAltText('验证码')).toBeVisible()
+  await page.getByPlaceholder('请输入验证码').fill('abcd')
   await page.getByRole('button', { name: /登\s*录/ }).click()
 }
 
@@ -450,6 +481,41 @@ test('管理端：用户列表与删除用户', async ({ page }) => {
     }
     return route.fallback()
   })
+  // 用户页会用 sys_role 填充角色下拉，避免未 mock 触发 401 清登录态。
+  await page.route('**/api/admin/roles/all', (route) =>
+    route.fulfill({
+      json: {
+        code: 200,
+        message: 'success',
+        data: [
+          {
+            id: 1,
+            roleCode: 'ADMIN',
+            roleName: '管理员',
+            description: null,
+            status: 1,
+            builtIn: 1,
+            userCount: 1,
+            permissionCount: 20,
+            createTime: null,
+            updateTime: null,
+          },
+          {
+            id: 2,
+            roleCode: 'USER',
+            roleName: '用户',
+            description: null,
+            status: 1,
+            builtIn: 1,
+            userCount: 1,
+            permissionCount: 5,
+            createTime: null,
+            updateTime: null,
+          },
+        ],
+      },
+    }),
+  )
 
   await mockLogin(page)
   await login(page)
@@ -462,6 +528,77 @@ test('管理端：用户列表与删除用户', async ({ page }) => {
   await page.getByRole('button', { name: '确定删除' }).click()
 
   await expect(page.locator('.el-message').filter({ hasText: '用户已删除' })).toBeVisible()
+})
+
+test('管理端：权限管理支持角色与权限项两个页签', async ({ page }) => {
+  await resetStorage(page)
+
+  await page.route('**/api/admin/roles?*', (route) =>
+    route.fulfill({
+      json: {
+        code: 200,
+        message: 'success',
+        data: {
+          records: [
+            {
+              id: 1,
+              roleCode: 'ADMIN',
+              roleName: '管理员',
+              description: '平台管理员',
+              status: 1,
+              builtIn: 1,
+              userCount: 1,
+              permissionCount: 20,
+              createTime: '2026-10-01T09:00:00',
+              updateTime: null,
+            },
+          ],
+          total: 1,
+          size: 10,
+          current: 1,
+        },
+      },
+    }),
+  )
+  await page.route('**/api/admin/permissions?*', (route) =>
+    route.fulfill({
+      json: {
+        code: 200,
+        message: 'success',
+        data: {
+          records: [
+            {
+              id: 101,
+              permCode: 'device:list',
+              permName: '设备列表',
+              permType: 'API',
+              resource: 'device',
+              action: 'list',
+              description: null,
+              status: 1,
+              roleCount: 1,
+              createTime: '2026-10-01T09:00:00',
+              updateTime: null,
+            },
+          ],
+          total: 1,
+          size: 10,
+          current: 1,
+        },
+      },
+    }),
+  )
+
+  await mockLogin(page)
+  await login(page)
+  await page.goto('/admin/permissions')
+
+  await expect(page.getByRole('heading', { name: '权限管理' })).toBeVisible()
+  await expect(page.getByRole('cell', { name: 'ADMIN', exact: true })).toBeVisible()
+
+  await page.getByRole('tab', { name: '权限项管理' }).click()
+  await expect(page.getByRole('cell', { name: 'device:list', exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: '新增权限' })).toBeVisible()
 })
 
 test('管理端：数据概览展示汇总指标', async ({ page }) => {

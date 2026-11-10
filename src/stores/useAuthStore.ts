@@ -92,10 +92,20 @@ export const useAuthStore = defineStore('auth', () => {
    * 注意：
    *   - 不再打印完整登录响应（原实现会把 token/refreshToken 输出到控制台）；
    *   - expiresAt 会被规范化后存储，供守卫与「即将过期提醒」使用；
-   *   - 登录成功后建议由后端 /auth/me 再校准一次权限，避免快照过期。
+   *   - 登录成功后建议由后端 /auth/me 再校准一次权限，避免快照过期；
+   *   - 验证码开启后（captcha.enabled=true）必须传入 captchaId + captchaCode，
+   *     验证码一次性使用，登录失败（4030/4031）后需重新获取。
    */
-  async function login(username: string, password: string): Promise<void> {
-    const res = await authApi.login({ username, password })
+  async function login(
+    username: string,
+    password: string,
+    captcha?: { captchaId: string; captchaCode: string },
+  ): Promise<void> {
+    const res = await authApi.login({
+      username,
+      password,
+      ...(captcha ? { captchaId: captcha.captchaId, captchaCode: captcha.captchaCode } : {}),
+    })
 
     if (!res?.token) {
       throw new Error('登录失败：未获取到 Token')

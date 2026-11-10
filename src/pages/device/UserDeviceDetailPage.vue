@@ -125,24 +125,36 @@
                 />
               </el-select>
               <el-button :loading="commandsLoading" @click="loadCommands">刷新</el-button>
+              <ColumnSettings
+                v-model:hidden="hiddenCommandColumns"
+                :columns="DEVICE_COMMAND_COLUMNS"
+                @show-all="showAllCommandColumns"
+                @reset="resetCommandColumns"
+              />
             </div>
             <el-table :data="commands" v-loading="commandsLoading" stripe>
               <template #empty><el-empty description="暂无指令" :image-size="60" /></template>
-              <el-table-column prop="commandId" label="指令 ID" min-width="200" show-overflow-tooltip />
-              <el-table-column label="动作/目标" width="150">
+              <el-table-column
+                v-if="!isCommandHidden('commandId')"
+                prop="commandId"
+                label="指令 ID"
+                min-width="200"
+                show-overflow-tooltip
+              />
+              <el-table-column v-if="!isCommandHidden('actionTarget')" label="动作/目标" width="150">
                 <template #default="{ row }">
                   {{ row.action }} / {{ CONTROL_TARGET_LABELS[row.target] || row.target }}
                   <span v-if="row.channel != null">#{{ row.channel }}</span>
                 </template>
               </el-table-column>
-              <el-table-column label="状态" width="110" align="center">
+              <el-table-column v-if="!isCommandHidden('status')" label="状态" width="110" align="center">
                 <template #default="{ row }">
                   <el-tag :type="COMMAND_STATUS_TAG_TYPES[row.status] || 'info'" size="small">
                     {{ COMMAND_STATUS_LABELS[row.status] || row.status }}
                   </el-tag>
                 </template>
               </el-table-column>
-              <el-table-column label="创建时间" width="170">
+              <el-table-column v-if="!isCommandHidden('createTime')" label="创建时间" width="170">
                 <template #default="{ row }">{{ formatDateTime(row.createTime) }}</template>
               </el-table-column>
               <el-table-column label="操作" width="140" fixed="right">
@@ -199,17 +211,29 @@
               />
               <el-button type="primary" @click="handleSensorSearch">查询</el-button>
               <el-button :loading="sensorsLoading" @click="loadSensors">刷新</el-button>
+              <ColumnSettings
+                v-model:hidden="hiddenSensorColumns"
+                :columns="DEVICE_SENSOR_COLUMNS"
+                @show-all="showAllSensorColumns"
+                @reset="resetSensorColumns"
+              />
             </div>
             <el-table :data="sensors" v-loading="sensorsLoading" stripe>
               <template #empty><el-empty description="暂无传感器记录" :image-size="60" /></template>
-              <el-table-column prop="sensorKey" label="传感器键" min-width="140" show-overflow-tooltip />
-              <el-table-column prop="sensorType" label="类型" width="130">
+              <el-table-column
+                v-if="!isSensorHidden('sensorKey')"
+                prop="sensorKey"
+                label="传感器键"
+                min-width="140"
+                show-overflow-tooltip
+              />
+              <el-table-column v-if="!isSensorHidden('sensorType')" prop="sensorType" label="类型" width="130">
                 <template #default="{ row }">{{ row.sensorType || '-' }}</template>
               </el-table-column>
-              <el-table-column label="数值" width="120">
+              <el-table-column v-if="!isSensorHidden('value')" label="数值" width="120">
                 <template #default="{ row }">{{ row.sensorValue }}{{ row.unit || '' }}</template>
               </el-table-column>
-              <el-table-column label="采集时间" width="170">
+              <el-table-column v-if="!isSensorHidden('collectTime')" label="采集时间" width="170">
                 <template #default="{ row }">{{ formatDateTime(row.timestamp || row.createTime) }}</template>
               </el-table-column>
             </el-table>
@@ -238,19 +262,31 @@
               />
               <el-button type="primary" @click="handleEventSearch">查询</el-button>
               <el-button :loading="eventsLoading" @click="loadEvents">刷新</el-button>
+              <ColumnSettings
+                v-model:hidden="hiddenEventColumns"
+                :columns="DEVICE_EVENT_COLUMNS"
+                @show-all="showAllEventColumns"
+                @reset="resetEventColumns"
+              />
             </div>
             <el-table :data="events" v-loading="eventsLoading" stripe>
               <template #empty><el-empty description="暂无事件" :image-size="60" /></template>
-              <el-table-column prop="type" label="类型" width="130" />
-              <el-table-column prop="event" label="事件" width="130" />
-              <el-table-column prop="code" label="编码" width="100" />
-              <el-table-column prop="message" label="描述" min-width="180" show-overflow-tooltip />
-              <el-table-column label="目标/通道" width="130">
+              <el-table-column v-if="!isEventHidden('type')" prop="type" label="类型" width="130" />
+              <el-table-column v-if="!isEventHidden('event')" prop="event" label="事件" width="130" />
+              <el-table-column v-if="!isEventHidden('code')" prop="code" label="编码" width="100" />
+              <el-table-column
+                v-if="!isEventHidden('message')"
+                prop="message"
+                label="描述"
+                min-width="180"
+                show-overflow-tooltip
+              />
+              <el-table-column v-if="!isEventHidden('targetChannel')" label="目标/通道" width="130">
                 <template #default="{ row }">
                   {{ row.target || '-' }}<span v-if="row.channel != null">#{{ row.channel }}</span>
                 </template>
               </el-table-column>
-              <el-table-column label="时间" width="170">
+              <el-table-column v-if="!isEventHidden('time')" label="时间" width="170">
                 <template #default="{ row }">{{ formatDateTime(row.timestamp || row.createTime) }}</template>
               </el-table-column>
             </el-table>
@@ -271,23 +307,29 @@
           <el-tab-pane label="状态历史" name="states">
             <div class="tab-toolbar">
               <el-button :loading="statesLoading" @click="loadStates">刷新</el-button>
+              <ColumnSettings
+                v-model:hidden="hiddenStateColumns"
+                :columns="DEVICE_STATE_COLUMNS"
+                @show-all="showAllStateColumns"
+                @reset="resetStateColumns"
+              />
             </div>
             <el-table :data="states" v-loading="statesLoading" stripe>
               <template #empty><el-empty description="暂无状态记录" :image-size="60" /></template>
-              <el-table-column label="目标" width="150">
+              <el-table-column v-if="!isStateHidden('target')" label="目标" width="150">
                 <template #default="{ row }">
                   {{ CONTROL_TARGET_LABELS[row.target] || row.target }}
                 </template>
               </el-table-column>
-              <el-table-column label="通道" width="90" align="center">
+              <el-table-column v-if="!isStateHidden('channel')" label="通道" width="90" align="center">
                 <template #default="{ row }">{{ row.channel ?? '全部' }}</template>
               </el-table-column>
-              <el-table-column label="参数" min-width="200">
+              <el-table-column v-if="!isStateHidden('params')" label="参数" min-width="200">
                 <template #default="{ row }">
                   <span class="mono">{{ row.params ? JSON.stringify(row.params) : '-' }}</span>
                 </template>
               </el-table-column>
-              <el-table-column label="时间" width="170">
+              <el-table-column v-if="!isStateHidden('time')" label="时间" width="170">
                 <template #default="{ row }">{{ formatDateTime(row.timestamp || row.createTime) }}</template>
               </el-table-column>
             </el-table>
@@ -322,31 +364,43 @@
                 />
               </el-select>
               <el-button :loading="alertsLoading" @click="loadAlerts">刷新</el-button>
+              <ColumnSettings
+                v-model:hidden="hiddenAlertColumns"
+                :columns="DEVICE_ALERT_COLUMNS"
+                @show-all="showAllAlertColumns"
+                @reset="resetAlertColumns"
+              />
             </div>
             <el-table :data="alerts" v-loading="alertsLoading" stripe>
               <template #empty><el-empty description="暂无告警" :image-size="60" /></template>
-              <el-table-column label="级别" width="90" align="center">
+              <el-table-column v-if="!isAlertHidden('alertLevel')" label="级别" width="90" align="center">
                 <template #default="{ row }">
                   <el-tag :type="ALERT_LEVEL_TAG_TYPES[row.alertLevel] || 'info'" size="small">
                     {{ ALERT_LEVEL_LABELS[row.alertLevel] || row.alertLevel }}
                   </el-tag>
                 </template>
               </el-table-column>
-              <el-table-column prop="alertType" label="类型" width="130">
+              <el-table-column v-if="!isAlertHidden('alertType')" prop="alertType" label="类型" width="130">
                 <template #default="{ row }">{{ row.alertType || '-' }}</template>
               </el-table-column>
-              <el-table-column prop="message" label="内容" min-width="180" show-overflow-tooltip />
-              <el-table-column label="数值/阈值" width="130">
+              <el-table-column
+                v-if="!isAlertHidden('message')"
+                prop="message"
+                label="内容"
+                min-width="180"
+                show-overflow-tooltip
+              />
+              <el-table-column v-if="!isAlertHidden('valueThreshold')" label="数值/阈值" width="130">
                 <template #default="{ row }">{{ row.value ?? '-' }} / {{ row.threshold ?? '-' }}</template>
               </el-table-column>
-              <el-table-column label="状态" width="100" align="center">
+              <el-table-column v-if="!isAlertHidden('status')" label="状态" width="100" align="center">
                 <template #default="{ row }">
                   <el-tag :type="ALERT_STATUS_TAG_TYPES[row.status ?? 0] || 'info'" size="small">
                     {{ ALERT_STATUS_LABELS[row.status ?? 0] || row.status }}
                   </el-tag>
                 </template>
               </el-table-column>
-              <el-table-column label="时间" width="170">
+              <el-table-column v-if="!isAlertHidden('time')" label="时间" width="170">
                 <template #default="{ row }">{{ formatDateTime(row.timestamp || row.createTime) }}</template>
               </el-table-column>
               <el-table-column label="操作" width="100" fixed="right">
@@ -380,29 +434,41 @@
           <el-tab-pane label="OTA 记录" name="ota">
             <div class="tab-toolbar">
               <el-button :loading="otaRecordsLoading" @click="loadOtaRecords">刷新</el-button>
+              <ColumnSettings
+                v-model:hidden="hiddenOtaColumns"
+                :columns="DEVICE_OTA_COLUMNS"
+                @show-all="showAllOtaColumns"
+                @reset="resetOtaColumns"
+              />
             </div>
             <el-table :data="otaRecords" v-loading="otaRecordsLoading" stripe>
               <template #empty><el-empty description="暂无升级记录" :image-size="60" /></template>
-              <el-table-column prop="version" label="目标版本" width="120" />
-              <el-table-column label="指令状态" width="110" align="center">
+              <el-table-column v-if="!isOtaHidden('version')" prop="version" label="目标版本" width="120" />
+              <el-table-column v-if="!isOtaHidden('commandStatus')" label="指令状态" width="110" align="center">
                 <template #default="{ row }">
                   <el-tag :type="COMMAND_STATUS_TAG_TYPES[row.status] || 'info'" size="small">
                     {{ row.statusText || COMMAND_STATUS_LABELS[row.status] || row.status }}
                   </el-tag>
                 </template>
               </el-table-column>
-              <el-table-column label="OTA 阶段" width="110">
+              <el-table-column v-if="!isOtaHidden('otaStage')" label="OTA 阶段" width="110">
                 <template #default="{ row }">
                   {{ row.otaState ? OTA_STATE_LABELS[row.otaState] || row.otaState : '-' }}
                 </template>
               </el-table-column>
-              <el-table-column label="进度" width="120">
+              <el-table-column v-if="!isOtaHidden('progress')" label="进度" width="120">
                 <template #default="{ row }">{{ row.progress ?? 0 }}%</template>
               </el-table-column>
-              <el-table-column prop="errorMsg" label="失败原因" min-width="160" show-overflow-tooltip>
+              <el-table-column
+                v-if="!isOtaHidden('errorMsg')"
+                prop="errorMsg"
+                label="失败原因"
+                min-width="160"
+                show-overflow-tooltip
+              >
                 <template #default="{ row }">{{ row.errorMsg || '-' }}</template>
               </el-table-column>
-              <el-table-column label="创建时间" width="170">
+              <el-table-column v-if="!isOtaHidden('createTime')" label="创建时间" width="170">
                 <template #default="{ row }">{{ formatDateTime(row.createTime) }}</template>
               </el-table-column>
               <el-table-column label="操作" width="100" fixed="right">
@@ -636,6 +702,8 @@ import {
   COMMAND_STATUS_LABELS,
   COMMAND_STATUS_TAG_TYPES,
 } from '@/utils/status'
+import ColumnSettings from '@/components/common/ColumnSettings.vue'
+import { useColumnSettings, type ColumnOption } from '@/composables/useColumnSettings'
 
 /**
  * ============================================================================
@@ -647,6 +715,107 @@ import {
  * 页面按 Tab 懒加载，避免一次性发起 6 个分页请求。
  * ============================================================================
  */
+
+// ==================== 列显隐 ====================
+/** 指令历史：操作列固定显示。 */
+const DEVICE_COMMAND_COLUMNS: ColumnOption[] = [
+  { key: 'commandId', label: '指令 ID' },
+  { key: 'actionTarget', label: '动作/目标' },
+  { key: 'status', label: '状态' },
+  { key: 'createTime', label: '创建时间' },
+  { key: 'actions', label: '操作', fixed: true },
+]
+
+const {
+  hidden: hiddenCommandColumns,
+  isHidden: isCommandHidden,
+  showAll: showAllCommandColumns,
+  reset: resetCommandColumns,
+} = useColumnSettings('device-detail-commands', DEVICE_COMMAND_COLUMNS)
+
+/** 传感器记录。 */
+const DEVICE_SENSOR_COLUMNS: ColumnOption[] = [
+  { key: 'sensorKey', label: '传感器键' },
+  { key: 'sensorType', label: '类型' },
+  { key: 'value', label: '数值' },
+  { key: 'collectTime', label: '采集时间' },
+]
+
+const {
+  hidden: hiddenSensorColumns,
+  isHidden: isSensorHidden,
+  showAll: showAllSensorColumns,
+  reset: resetSensorColumns,
+} = useColumnSettings('device-detail-sensors', DEVICE_SENSOR_COLUMNS)
+
+/** 设备事件。 */
+const DEVICE_EVENT_COLUMNS: ColumnOption[] = [
+  { key: 'type', label: '类型' },
+  { key: 'event', label: '事件' },
+  { key: 'code', label: '编码' },
+  { key: 'message', label: '描述' },
+  { key: 'targetChannel', label: '目标/通道' },
+  { key: 'time', label: '时间' },
+]
+
+const {
+  hidden: hiddenEventColumns,
+  isHidden: isEventHidden,
+  showAll: showAllEventColumns,
+  reset: resetEventColumns,
+} = useColumnSettings('device-detail-events', DEVICE_EVENT_COLUMNS)
+
+/** 状态历史。 */
+const DEVICE_STATE_COLUMNS: ColumnOption[] = [
+  { key: 'target', label: '目标' },
+  { key: 'channel', label: '通道' },
+  { key: 'params', label: '参数' },
+  { key: 'time', label: '时间' },
+]
+
+const {
+  hidden: hiddenStateColumns,
+  isHidden: isStateHidden,
+  showAll: showAllStateColumns,
+  reset: resetStateColumns,
+} = useColumnSettings('device-detail-states', DEVICE_STATE_COLUMNS)
+
+/** 设备告警：操作列固定显示。 */
+const DEVICE_ALERT_COLUMNS: ColumnOption[] = [
+  { key: 'alertLevel', label: '级别' },
+  { key: 'alertType', label: '类型' },
+  { key: 'message', label: '内容' },
+  { key: 'valueThreshold', label: '数值/阈值' },
+  { key: 'status', label: '状态' },
+  { key: 'time', label: '时间' },
+  { key: 'actions', label: '操作', fixed: true },
+]
+
+const {
+  hidden: hiddenAlertColumns,
+  isHidden: isAlertHidden,
+  showAll: showAllAlertColumns,
+  reset: resetAlertColumns,
+} = useColumnSettings('device-detail-alerts', DEVICE_ALERT_COLUMNS)
+
+/** OTA 记录：操作列固定显示。 */
+const DEVICE_OTA_COLUMNS: ColumnOption[] = [
+  { key: 'version', label: '目标版本' },
+  { key: 'commandStatus', label: '指令状态' },
+  { key: 'otaStage', label: 'OTA 阶段' },
+  { key: 'progress', label: '进度' },
+  { key: 'errorMsg', label: '失败原因' },
+  { key: 'createTime', label: '创建时间' },
+  { key: 'actions', label: '操作', fixed: true },
+]
+
+const {
+  hidden: hiddenOtaColumns,
+  isHidden: isOtaHidden,
+  showAll: showAllOtaColumns,
+  reset: resetOtaColumns,
+} = useColumnSettings('device-detail-ota-records', DEVICE_OTA_COLUMNS)
+
 const route = useRoute()
 const router = useRouter()
 const realtimeStore = useDeviceRealtimeStore()

@@ -32,6 +32,7 @@ import {
 
 /** 不允许触发「自动刷新」的接口：登录失败、注册、刷新本身、登出、找回密码。 */
 const NO_REFRESH_URLS = [
+  '/auth/captcha',
   '/auth/login',
   '/auth/register',
   '/auth/refresh',
@@ -42,6 +43,7 @@ const NO_REFRESH_URLS = [
 
 /** 错误提示由页面自行处理的接口（避免拦截器与页面重复弹 toast）。 */
 const SILENT_ERROR_URLS = [
+  '/auth/captcha',
   '/auth/login',
   '/auth/register',
   '/auth/refresh',

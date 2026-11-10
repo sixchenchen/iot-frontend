@@ -4,7 +4,12 @@
       <template #header>
         <div class="card-header">
           <h3>用户管理</h3>
-          <el-button :loading="loading" @click="fetchUsers">刷新</el-button>
+          <div class="header-actions">
+            <el-button v-permission="'user:create'" type="primary" @click="openCreate">
+              新增用户
+            </el-button>
+            <el-button :loading="loading" @click="fetchUsers">刷新</el-button>
+          </div>
         </div>
       </template>
 
@@ -41,23 +46,29 @@
         <el-form-item>
           <el-button type="primary" @click="handleSearch">查询</el-button>
           <el-button @click="handleReset">重置</el-button>
+          <ColumnSettings
+            v-model:hidden="hiddenColumns"
+            :columns="USER_COLUMNS"
+            @show-all="showAllColumns"
+            @reset="resetColumns"
+          />
         </el-form-item>
       </el-form>
 
       <el-table :data="users" v-loading="loading" stripe>
         <template #empty><el-empty description="暂无用户" :image-size="60" /></template>
-        <el-table-column prop="id" label="ID" width="70" />
-        <el-table-column prop="username" label="用户名" min-width="140" />
-        <el-table-column label="昵称" min-width="120">
+        <el-table-column v-if="!isHidden('id')" prop="id" label="ID" width="70" />
+        <el-table-column v-if="!isHidden('username')" prop="username" label="用户名" min-width="140" />
+        <el-table-column v-if="!isHidden('nickname')" label="昵称" min-width="120">
           <template #default="{ row }">{{ row.nickname || '-' }}</template>
         </el-table-column>
-        <el-table-column label="联系方式" min-width="180">
+        <el-table-column v-if="!isHidden('contact')" label="联系方式" min-width="180">
           <template #default="{ row }">
             <div>{{ row.phone || '-' }}</div>
             <div class="sub-text">{{ row.email || '-' }}</div>
           </template>
         </el-table-column>
-        <el-table-column label="角色" min-width="120">
+        <el-table-column v-if="!isHidden('roles')" label="角色" min-width="120">
           <template #default="{ row }">
             <el-tag
               v-for="role in row.roles"
@@ -71,14 +82,14 @@
             <span v-if="!row.roles.length">-</span>
           </template>
         </el-table-column>
-        <el-table-column label="状态" width="90" align="center">
+        <el-table-column v-if="!isHidden('status')" label="状态" width="90" align="center">
           <template #default="{ row }">
             <el-tag :type="row.status === 1 ? 'success' : 'danger'" size="small">
               {{ row.status === 1 ? '启用' : '禁用' }}
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="最后登录" width="170">
+        <el-table-column v-if="!isHidden('lastLoginTime')" label="最后登录" width="170">
           <template #default="{ row }">{{ formatDateTime(row.lastLoginTime) }}</template>
         </el-table-column>
         <el-table-column label="操作" width="270" fixed="right">
@@ -222,6 +233,55 @@
         <el-button type="primary" :loading="rolesSaving" @click="submitRoles">保存</el-button>
       </template>
     </el-dialog>
+
+    <!-- ============ 新增用户 ============ -->
+    <el-dialog
+      v-model="createVisible"
+      title="新增用户"
+      width="520px"
+      :close-on-click-modal="false"
+    >
+      <el-form ref="createFormRef" :model="createForm" :rules="createRules" label-width="90px">
+        <el-form-item label="用户名" prop="username">
+          <el-input v-model="createForm.username" maxlength="32" placeholder="4-32 位字母/数字/下划线" />
+        </el-form-item>
+        <el-form-item label="密码" prop="password">
+          <el-input
+            v-model="createForm.password"
+            type="password"
+            show-password
+            maxlength="64"
+            placeholder="8-64 位，需同时包含字母和数字"
+          />
+        </el-form-item>
+        <el-form-item label="昵称" prop="nickname">
+          <el-input v-model="createForm.nickname" maxlength="64" />
+        </el-form-item>
+        <el-form-item label="邮箱" prop="email">
+          <el-input v-model="createForm.email" maxlength="128" />
+        </el-form-item>
+        <el-form-item label="手机号" prop="phone">
+          <el-input v-model="createForm.phone" maxlength="11" />
+        </el-form-item>
+        <el-form-item label="角色" prop="roleCodes">
+          <el-select v-model="createForm.roleCodes" multiple style="width: 100%">
+            <el-option
+              v-for="role in roleOptions"
+              :key="role.code"
+              :label="`${role.name}（${role.code}）`"
+              :value="role.code"
+            />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="状态">
+          <el-switch v-model="createForm.status" :active-value="1" :inactive-value="0" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="createVisible = false">取消</el-button>
+        <el-button type="primary" :loading="createSaving" @click="submitCreate">创建</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -229,11 +289,13 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
 import { adminUserApi } from '@/features/admin/api/userApi'
+import { roleApi } from '@/features/admin/api/roleApi'
 import { commonApi } from '@/features/common/api/commonApi'
 import { useAuthStore } from '@/stores/useAuthStore'
 import type { DictionaryOption, RoleOption } from '@/types/common'
 import type { Device } from '@/types/device'
 import type {
+  AdminUserCreateRequest,
   AdminUserDetailVO,
   AdminUserQuery,
   AdminUserUpdateRequest,
@@ -242,6 +304,8 @@ import type {
   UserStatusUpdateRequest,
 } from '@/types/user'
 import { formatDateTime, isDeviceOnline } from '@/utils/device'
+import ColumnSettings from '@/components/common/ColumnSettings.vue'
+import { useColumnSettings, type ColumnOption } from '@/composables/useColumnSettings'
 
 /**
  * ============================================================================
@@ -251,6 +315,26 @@ import { formatDateTime, isDeviceOnline } from '@/utils/device'
  * 权限码：user:list / user:update / user:delete / device:unbind。
  * ============================================================================
  */
+
+/** 可配置列；操作列固定显示，避免隐藏后无法操作。 */
+const USER_COLUMNS: ColumnOption[] = [
+  { key: 'id', label: 'ID' },
+  { key: 'username', label: '用户名' },
+  { key: 'nickname', label: '昵称' },
+  { key: 'contact', label: '联系方式' },
+  { key: 'roles', label: '角色' },
+  { key: 'status', label: '状态' },
+  { key: 'lastLoginTime', label: '最后登录' },
+  { key: 'actions', label: '操作', fixed: true },
+]
+
+const {
+  hidden: hiddenColumns,
+  isHidden,
+  showAll: showAllColumns,
+  reset: resetColumns,
+} = useColumnSettings('admin-users', USER_COLUMNS)
+
 const authStore = useAuthStore()
 const canForceUnbind = computed(() => authStore.hasPermission('device:unbind'))
 
@@ -320,6 +404,17 @@ const loadDictionaries = async () => {
     if (dict.userStatus?.length) statusOptions.value = dict.userStatus
   } catch {
     // 字典失败时保留本地兜底选项
+  }
+
+  // 角色下拉以 sys_role 为准（含自定义角色），仅展示启用中的角色。
+  try {
+    const roles = await roleApi.all()
+    const enabled = (roles || [])
+      .filter((role) => role.status === 1)
+      .map((role) => ({ code: role.roleCode, name: role.roleName }))
+    if (enabled.length) roleOptions.value = enabled
+  } catch {
+    // 角色接口不可用时沿用字典结果
   }
 }
 
@@ -510,6 +605,94 @@ const handleDelete = (row: AdminUserVO) => {
     .catch(() => undefined)
 }
 
+// ==================== 新增用户 ====================
+const createVisible = ref(false)
+const createSaving = ref(false)
+const createFormRef = ref<FormInstance>()
+const createForm = reactive<{
+  username: string
+  password: string
+  nickname: string
+  email: string
+  phone: string
+  roleCodes: string[]
+  status: number
+}>({
+  username: '',
+  password: '',
+  nickname: '',
+  email: '',
+  phone: '',
+  roleCodes: ['USER'],
+  status: 1,
+})
+
+const createRules: FormRules = {
+  username: [
+    { required: true, message: '请输入用户名', trigger: 'blur' },
+    {
+      pattern: /^[A-Za-z0-9_]{4,32}$/,
+      message: '4-32 位字母、数字或下划线',
+      trigger: 'blur',
+    },
+  ],
+  password: [
+    { required: true, message: '请输入密码', trigger: 'blur' },
+    {
+      pattern: /^(?=.*[A-Za-z])(?=.*\d)\S{8,64}$/,
+      message: '8-64 位且同时包含字母和数字',
+      trigger: 'blur',
+    },
+  ],
+  email: [{ type: 'email', message: '邮箱格式不正确', trigger: 'blur' }],
+  phone: [{ pattern: /^1[3-9]\d{9}$/, message: '手机号格式不正确', trigger: 'blur' }],
+  roleCodes: [
+    { required: true, type: 'array', min: 1, message: '至少选择一个角色', trigger: 'change' },
+  ],
+}
+
+const openCreate = () => {
+  createForm.username = ''
+  createForm.password = ''
+  createForm.nickname = ''
+  createForm.email = ''
+  createForm.phone = ''
+  createForm.roleCodes = ['USER']
+  createForm.status = 1
+  createVisible.value = true
+}
+
+const submitCreate = async () => {
+  if (!createFormRef.value) return
+  try {
+    await createFormRef.value.validate()
+  } catch {
+    return
+  }
+
+  const payload: AdminUserCreateRequest = {
+    username: createForm.username.trim(),
+    password: createForm.password,
+    nickname: createForm.nickname.trim() || undefined,
+    email: createForm.email.trim() || undefined,
+    phone: createForm.phone.trim() || undefined,
+    roleCodes: createForm.roleCodes,
+    status: createForm.status === 1 ? 1 : 0,
+  }
+
+  createSaving.value = true
+  try {
+    await adminUserApi.create(payload)
+    ElMessage.success('用户已创建')
+    createVisible.value = false
+    handleSearch()
+  } catch {
+    // 失败原因由统一请求层提示
+  } finally {
+    createSaving.value = false
+  }
+}
+
 onMounted(() => {
   loadDictionaries()
   fetchUsers()
@@ -529,6 +712,11 @@ onMounted(() => {
   margin: 0;
   font-size: 18px;
   color: #303133;
+}
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 .filter-form {
   margin-bottom: 8px;

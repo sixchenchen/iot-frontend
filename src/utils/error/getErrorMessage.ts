@@ -7,6 +7,25 @@ export interface ErrorPayload {
 }
 
 /**
+ * 提取后端业务码。
+ * 业务失败（HTTP 200 + code≠200）由 request.ts 以 Error.code 抛出；
+ * HTTP 异常则从响应体的 code 读取。页面据此做差异化处理（如验证码错误刷新图片）。
+ */
+export function getErrorCode(error: unknown): number | undefined {
+  if (isAxiosError(error)) {
+    const data = error.response?.data as ErrorPayload | undefined
+    return typeof data?.code === 'number' ? data.code : undefined
+  }
+
+  if (error instanceof Error) {
+    const code = (error as Error & { code?: number }).code
+    return typeof code === 'number' ? code : undefined
+  }
+
+  return undefined
+}
+
+/**
  * 从 unknown 错误中安全提取可读消息。
  * 优先级：Axios 响应体 message > 业务码文案 > Error.message > 字符串 > fallback
  *

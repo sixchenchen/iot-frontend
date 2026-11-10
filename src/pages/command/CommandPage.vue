@@ -52,35 +52,52 @@
         <el-form-item>
           <el-button type="primary" @click="handleSearch">查询</el-button>
           <el-button @click="handleReset">重置</el-button>
+          <ColumnSettings
+            v-model:hidden="hiddenColumns"
+            :columns="COMMAND_COLUMNS"
+            @show-all="showAllColumns"
+            @reset="resetColumns"
+          />
         </el-form-item>
       </el-form>
 
       <el-table :data="commands" v-loading="loading" stripe>
         <template #empty><el-empty description="暂无指令记录" :image-size="60" /></template>
-        <el-table-column prop="commandId" label="指令 ID" min-width="210" show-overflow-tooltip />
-        <el-table-column v-if="isAdmin" prop="deviceId" label="设备 MAC" width="150" />
-        <el-table-column label="动作/目标" width="160">
+        <el-table-column
+          v-if="!isHidden('commandId')"
+          prop="commandId"
+          label="指令 ID"
+          min-width="210"
+          show-overflow-tooltip
+        />
+        <el-table-column
+          v-if="isAdmin && !isHidden('deviceId')"
+          prop="deviceId"
+          label="设备 MAC"
+          width="150"
+        />
+        <el-table-column v-if="!isHidden('actionTarget')" label="动作/目标" width="160">
           <template #default="{ row }">
             {{ row.action }} / {{ CONTROL_TARGET_LABELS[row.target] || row.target }}
             <span v-if="row.channel != null">#{{ row.channel }}</span>
           </template>
         </el-table-column>
-        <el-table-column label="状态" width="110" align="center">
+        <el-table-column v-if="!isHidden('status')" label="状态" width="110" align="center">
           <template #default="{ row }">
             <el-tag :type="COMMAND_STATUS_TAG_TYPES[row.status] || 'info'" size="small">
               {{ COMMAND_STATUS_LABELS[row.status] || row.status }}
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column v-if="isAdmin" label="来源" width="100">
+        <el-table-column v-if="isAdmin && !isHidden('source')" label="来源" width="100">
           <template #default="{ row }">
             {{ row.source ? COMMAND_SOURCE_LABELS[row.source] || row.source : '-' }}
           </template>
         </el-table-column>
-        <el-table-column v-if="isAdmin" label="操作人" width="120">
+        <el-table-column v-if="isAdmin && !isHidden('operator')" label="操作人" width="120">
           <template #default="{ row }">{{ row.operator || '-' }}</template>
         </el-table-column>
-        <el-table-column label="创建时间" width="170">
+        <el-table-column v-if="!isHidden('createTime')" label="创建时间" width="170">
           <template #default="{ row }">{{ formatDateTime(row.createTime) }}</template>
         </el-table-column>
         <el-table-column label="操作" width="140" fixed="right">
@@ -156,6 +173,8 @@ import {
   COMMAND_STATUS_LABELS,
   COMMAND_STATUS_TAG_TYPES,
 } from '@/utils/status'
+import ColumnSettings from '@/components/common/ColumnSettings.vue'
+import { useColumnSettings, type ColumnOption } from '@/composables/useColumnSettings'
 
 /**
  * ============================================================================
@@ -166,6 +185,26 @@ import {
  * 通过路由名切换模式，避免维护两份几乎相同的页面。
  * ============================================================================
  */
+
+/** 可配置列；操作列固定显示，「我的/全局」两个路由共用同一份配置。 */
+const COMMAND_COLUMNS: ColumnOption[] = [
+  { key: 'commandId', label: '指令 ID' },
+  { key: 'deviceId', label: '设备 MAC' },
+  { key: 'actionTarget', label: '动作/目标' },
+  { key: 'status', label: '状态' },
+  { key: 'source', label: '来源' },
+  { key: 'operator', label: '操作人' },
+  { key: 'createTime', label: '创建时间' },
+  { key: 'actions', label: '操作', fixed: true },
+]
+
+const {
+  hidden: hiddenColumns,
+  isHidden,
+  showAll: showAllColumns,
+  reset: resetColumns,
+} = useColumnSettings('command-list', COMMAND_COLUMNS)
+
 const route = useRoute()
 const isAdmin = computed(() => route.name === 'AdminCommands')
 

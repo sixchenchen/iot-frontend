@@ -77,7 +77,15 @@
           <template #header>
             <div class="card-header">
               <h3>登录记录</h3>
-              <el-button :loading="logsLoading" @click="fetchLoginLogs">刷新</el-button>
+              <div class="header-actions">
+                <el-button :loading="logsLoading" @click="fetchLoginLogs">刷新</el-button>
+                <ColumnSettings
+                  v-model:hidden="hiddenLogColumns"
+                  :columns="LOGIN_LOG_COLUMNS"
+                  @show-all="showAllLogColumns"
+                  @reset="resetLogColumns"
+                />
+              </div>
             </div>
           </template>
 
@@ -85,20 +93,20 @@
             <template #empty>
               <el-empty description="暂无登录记录" :image-size="60" />
             </template>
-            <el-table-column label="登录时间" width="170">
+            <el-table-column v-if="!isLogHidden('loginTime')" label="登录时间" width="170">
               <template #default="{ row }">{{ formatDateTime(row.loginTime) }}</template>
             </el-table-column>
-            <el-table-column label="结果" width="90" align="center">
+            <el-table-column v-if="!isLogHidden('status')" label="结果" width="90" align="center">
               <template #default="{ row }">
                 <el-tag :type="row.status === 1 ? 'success' : 'danger'" size="small">
                   {{ row.status === 1 ? '成功' : '失败' }}
                 </el-tag>
               </template>
             </el-table-column>
-            <el-table-column prop="ip" label="IP" width="140">
+            <el-table-column v-if="!isLogHidden('ip')" prop="ip" label="IP" width="140">
               <template #default="{ row }">{{ row.ip || '-' }}</template>
             </el-table-column>
-            <el-table-column label="客户端" min-width="180">
+            <el-table-column v-if="!isLogHidden('client')" label="客户端" min-width="180">
               <template #default="{ row }">
                 <el-tooltip v-if="row.userAgent" :content="row.userAgent" placement="top">
                   <span class="ellipsis">{{ row.userAgent }}</span>
@@ -106,7 +114,7 @@
                 <span v-else>-</span>
               </template>
             </el-table-column>
-            <el-table-column prop="message" label="说明" min-width="140">
+            <el-table-column v-if="!isLogHidden('message')" prop="message" label="说明" min-width="140">
               <template #default="{ row }">{{ row.message || '-' }}</template>
             </el-table-column>
           </el-table>
@@ -176,6 +184,8 @@ import { useAuthStore } from '@/stores/useAuthStore'
 import { AUTH_STORAGE_KEYS, writeJSON } from '@/lib/auth-storage'
 import type { LoginLogVO, UserProfileVO } from '@/types/user'
 import { formatDateTime } from '@/utils/device'
+import ColumnSettings from '@/components/common/ColumnSettings.vue'
+import { useColumnSettings, type ColumnOption } from '@/composables/useColumnSettings'
 
 /**
  * ============================================================================
@@ -322,6 +332,22 @@ const handleAvatarUpload = async (options: UploadRequestOptions) => {
 }
 
 // ==================== 登录记录 ====================
+/** 登录记录：无可操作列，全部列均可隐藏。 */
+const LOGIN_LOG_COLUMNS: ColumnOption[] = [
+  { key: 'loginTime', label: '登录时间' },
+  { key: 'status', label: '结果' },
+  { key: 'ip', label: 'IP' },
+  { key: 'client', label: '客户端' },
+  { key: 'message', label: '说明' },
+]
+
+const {
+  hidden: hiddenLogColumns,
+  isHidden: isLogHidden,
+  showAll: showAllLogColumns,
+  reset: resetLogColumns,
+} = useColumnSettings('profile-login-logs', LOGIN_LOG_COLUMNS)
+
 const loginLogs = ref<LoginLogVO[]>([])
 const logsLoading = ref(false)
 const logTotal = ref(0)
@@ -431,6 +457,11 @@ fetchLoginLogs()
   margin: 0;
   font-size: 18px;
   color: #303133;
+}
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 .avatar-block {
   display: flex;

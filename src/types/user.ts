@@ -88,6 +88,22 @@ export interface AdminUserUpdateRequest {
   phone?: string
 }
 
+/**
+ * POST /admin/users 的请求体（文档 8.6）。
+ * - username：4-32 位字母/数字/下划线；
+ * - password：8-64 位且同时包含字母和数字；
+ * - roleCodes 为空时后端默认分配 USER。
+ */
+export interface AdminUserCreateRequest {
+  username: string
+  password: string
+  nickname?: string
+  email?: string
+  phone?: string
+  roleCodes?: string[]
+  status?: 0 | 1
+}
+
 /** PUT /admin/users/{id}/status 的请求体。 */
 export interface UserStatusUpdateRequest {
   status: 0 | 1

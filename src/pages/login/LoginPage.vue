@@ -47,6 +47,36 @@
               />
             </el-form-item>
 
+            <!-- 图片验证码：点击图片可刷新；加载失败时提供重试入口 -->
+            <el-form-item prop="captchaCode">
+              <div class="captcha-row">
+                <el-input
+                  v-model.trim="loginForm.captchaCode"
+                  class="captcha-input"
+                  placeholder="请输入验证码"
+                  prefix-icon="Key"
+                  maxlength="8"
+                  autocomplete="off"
+                  :disabled="!captcha"
+                />
+                <div
+                  class="captcha-image"
+                  role="button"
+                  tabindex="0"
+                  :aria-label="captcha ? '刷新验证码' : '重新加载验证码'"
+                  :title="captcha ? '看不清？点击刷新' : '加载失败，点击重试'"
+                  @click="loadCaptcha"
+                  @keydown.enter.prevent="loadCaptcha"
+                  @keydown.space.prevent="loadCaptcha"
+                >
+                  <img v-if="captcha" :src="captcha.imageBase64" alt="验证码" />
+                  <span v-else class="captcha-placeholder">
+                    {{ captchaLoading ? '加载中…' : '点击重试' }}
+                  </span>
+                </div>
+              </div>
+            </el-form-item>
+
             <el-form-item>
               <el-checkbox v-model="rememberMe">记住用户名</el-checkbox>
             </el-form-item>
@@ -56,6 +86,7 @@
                 type="primary"
                 class="w-full"
                 :loading="loginLoading"
+                :disabled="!captcha || captchaLoading"
                 native-type="submit"
               >
                 登 录
@@ -173,11 +204,12 @@
 </template>
 
 <script setup lang="ts">
-import { computed, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, type FormInstance, type FormRules } from 'element-plus'
 import { useAuthStore } from '@/stores/useAuthStore'
-import { getErrorMessage } from '@/utils/error'
+import { authApi, type CaptchaResponse } from '@/features/auth/api/authApi'
+import { getErrorCode, getErrorMessage } from '@/utils/error'
 import { clearRememberedUsername, getRememberedUsername, saveRememberedUsername } from '@/lib/auth-storage'
 
 /**
@@ -214,11 +246,47 @@ const rememberMe = ref(Boolean(rememberedUsername))
 const loginForm = reactive({
   username: rememberedUsername,
   password: '',
+  captchaCode: '',
 })
 const loginRules = reactive<FormRules>({
   username: [{ required: true, message: '请输入用户名', trigger: 'blur' }],
   password: [{ required: true, message: '请输入密码', trigger: 'blur' }],
+  captchaCode: [{ required: true, message: '请输入验证码', trigger: 'blur' }],
 })
+
+// ==================== 图片验证码 ====================
+const captcha = ref<CaptchaResponse | null>(null)
+const captchaLoading = ref(false)
+/**
+ * 并发点击图片会返回多个验证码，旧响应可能后到并覆盖新验证码。
+ * 用自增序号丢弃过期响应，保证展示的 captchaId 与图片始终一致。
+ */
+let captchaSeq = 0
+
+const loadCaptcha = async () => {
+  if (captchaLoading.value) return
+  const seq = ++captchaSeq
+  captchaLoading.value = true
+  try {
+    const res = await authApi.captcha()
+    if (seq !== captchaSeq) return
+    if (!res?.captchaId || !res.imageBase64) {
+      throw new Error('验证码数据异常')
+    }
+    captcha.value = res
+    loginForm.captchaCode = ''
+    loginFormRef.value?.clearValidate('captchaCode')
+  } catch (error) {
+    if (seq !== captchaSeq) return
+    // 验证码一次性使用：加载失败时清空旧值，避免用户用旧 id 提交。
+    captcha.value = null
+    ElMessage.error(getErrorMessage(error, '验证码加载失败，请点击重试'))
+  } finally {
+    if (seq === captchaSeq) captchaLoading.value = false
+  }
+}
+
+onMounted(loadCaptcha)
 
 const handleLogin = async () => {
   if (!loginFormRef.value) return
@@ -228,9 +296,17 @@ const handleLogin = async () => {
     return // 校验失败，Element Plus 已在表单项上给出提示
   }
 
+  if (!captcha.value) {
+    ElMessage.warning('验证码未加载，请点击验证码图片重试')
+    return
+  }
+
   loginLoading.value = true
   try {
-    await authStore.login(loginForm.username, loginForm.password)
+    await authStore.login(loginForm.username, loginForm.password, {
+      captchaId: captcha.value.captchaId,
+      captchaCode: loginForm.captchaCode,
+    })
 
     if (rememberMe.value) {
       saveRememberedUsername(loginForm.username)
@@ -247,6 +323,13 @@ const handleLogin = async () => {
   } catch (error) {
     // 拦截器对 /auth/login 不自动弹窗，由页面统一展示真实失败原因。
     ElMessage.error(getErrorMessage(error, '登录失败，请稍后重试'))
+
+    // 4030 过期 / 4031 错误 / 4032 未填：验证码已不可复用，必须重新获取。
+    const code = getErrorCode(error)
+    if (code === 4030 || code === 4031 || code === 4032) {
+      captcha.value = null
+      void loadCaptcha()
+    }
   } finally {
     loginLoading.value = false
   }
@@ -406,6 +489,47 @@ const handleRegister = async () => {
 }
 .w-full {
   width: 100%;
+}
+
+/* 图片验证码：输入框与图片同一行，图片固定尺寸避免加载时抖动 */
+.captcha-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+}
+.captcha-input {
+  flex: 1;
+  min-width: 0;
+}
+.captcha-image {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 112px;
+  height: 40px;
+  flex-shrink: 0;
+  border: 1px solid #dcdfe6;
+  border-radius: 4px;
+  overflow: hidden;
+  cursor: pointer;
+  background-color: #f5f7fa;
+  outline: none;
+  transition: border-color 0.15s;
+}
+.captcha-image:hover,
+.captcha-image:focus-visible {
+  border-color: #409eff;
+}
+.captcha-image img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  user-select: none;
+}
+.captcha-placeholder {
+  font-size: 12px;
+  color: #909399;
 }
 .login-tabs {
   padding: 0 10px;

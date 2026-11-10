@@ -3,6 +3,7 @@ import type { RouteRecordRaw } from 'vue-router'
 import {
   Bell,
   Grid,
+  Key,
   Monitor,
   Odometer,
   Setting,
@@ -26,8 +27,8 @@ import {
  *   - 监控告警：device_alert_record / device_sensor / device_sensor_record /
  *               device_sensor_threshold / device_heartbeat_record / device_state_record
  *   - 固件升级：device_firmware / device_ota_task
- *   - 系统管理：sys_user / sys_role / sys_permission / sys_login_log /
- *               sys_dead_letter / sys_refresh_token
+ *   - 权限中心：sys_user / sys_role / sys_permission（RBAC 三角）
+ *   - 系统管理：sys_login_log / sys_dead_letter / sys_refresh_token
  *
  * 过滤规则与路由守卫保持一致：
  *   - meta.hidden          不展示；
@@ -37,7 +38,14 @@ import {
  * 前端菜单过滤仅是体验层控制，后端必须对接口做鉴权。
  * ============================================================================
  */
-export type MenuGroupKey = 'overview' | 'device' | 'control' | 'monitor' | 'ota' | 'system'
+export type MenuGroupKey =
+  | 'overview'
+  | 'device'
+  | 'control'
+  | 'monitor'
+  | 'ota'
+  | 'access'
+  | 'system'
 
 export interface MenuGroupMeta {
   key: MenuGroupKey
@@ -54,6 +62,7 @@ export const MENU_GROUPS: Record<MenuGroupKey, MenuGroupMeta> = {
   control: { key: 'control', title: '指令控制', icon: Tickets, order: 30 },
   monitor: { key: 'monitor', title: '监控告警', icon: Bell, order: 40 },
   ota: { key: 'ota', title: '固件升级', icon: UploadFilled, order: 50 },
+  access: { key: 'access', title: '权限中心', icon: Key, order: 80 },
   system: { key: 'system', title: '系统管理', icon: Setting, order: 90 },
 }
 

@@ -4,7 +4,15 @@
       <template #header>
         <div class="card-header">
           <h3>死信管理</h3>
-          <el-button :loading="loading" @click="fetchDeadLetters">刷新</el-button>
+          <div class="header-actions">
+            <ColumnSettings
+              v-model:hidden="hiddenColumns"
+              :columns="DEAD_LETTER_COLUMNS"
+              @show-all="showAllColumns"
+              @reset="resetColumns"
+            />
+            <el-button :loading="loading" @click="fetchDeadLetters">刷新</el-button>
+          </div>
         </div>
       </template>
 
@@ -17,27 +25,45 @@
 
       <el-table :data="deadLetters" v-loading="loading" stripe>
         <template #empty><el-empty description="暂无死信" :image-size="60" /></template>
-        <el-table-column prop="id" label="ID" width="70" />
-        <el-table-column prop="topic" label="Topic" min-width="200" show-overflow-tooltip />
-        <el-table-column prop="errorMsg" label="错误信息" min-width="200" show-overflow-tooltip>
+        <el-table-column v-if="!isHidden('id')" prop="id" label="ID" width="70" />
+        <el-table-column
+          v-if="!isHidden('topic')"
+          prop="topic"
+          label="Topic"
+          min-width="200"
+          show-overflow-tooltip
+        />
+        <el-table-column
+          v-if="!isHidden('errorMsg')"
+          prop="errorMsg"
+          label="错误信息"
+          min-width="200"
+          show-overflow-tooltip
+        >
           <template #default="{ row }">{{ row.errorMsg || '-' }}</template>
         </el-table-column>
-        <el-table-column label="可重试" width="90" align="center">
+        <el-table-column v-if="!isHidden('retryable')" label="可重试" width="90" align="center">
           <template #default="{ row }">
             <el-tag :type="row.isRetryable === 1 ? 'success' : 'danger'" size="small">
               {{ row.isRetryable === 1 ? '是' : '否' }}
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="状态" width="110" align="center">
+        <el-table-column v-if="!isHidden('status')" label="状态" width="110" align="center">
           <template #default="{ row }">
             <el-tag :type="DEAD_LETTER_STATUS_TAG_TYPES[row.status] || 'info'" size="small">
               {{ DEAD_LETTER_STATUS_LABELS[row.status] || row.status }}
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="retryCount" label="重试次数" width="90" align="center" />
-        <el-table-column label="创建时间" width="170">
+        <el-table-column
+          v-if="!isHidden('retryCount')"
+          prop="retryCount"
+          label="重试次数"
+          width="90"
+          align="center"
+        />
+        <el-table-column v-if="!isHidden('createTime')" label="创建时间" width="170">
           <template #default="{ row }">{{ formatDateTime(row.createTime) }}</template>
         </el-table-column>
         <el-table-column label="操作" width="190" fixed="right">
@@ -111,11 +137,33 @@ import {
   DEAD_LETTER_STATUS_LABELS,
   DEAD_LETTER_STATUS_TAG_TYPES,
 } from '@/utils/status'
+import ColumnSettings from '@/components/common/ColumnSettings.vue'
+import { useColumnSettings, type ColumnOption } from '@/composables/useColumnSettings'
 
 /**
  * 管理端死信管理（文档 5.19 / 5.20 / 8.9）。
  * 支持查看详情、重放、忽略；重放与忽略都只针对未处理记录。
  */
+
+/** 可配置列；操作列固定显示。 */
+const DEAD_LETTER_COLUMNS: ColumnOption[] = [
+  { key: 'id', label: 'ID' },
+  { key: 'topic', label: 'Topic' },
+  { key: 'errorMsg', label: '错误信息' },
+  { key: 'retryable', label: '可重试' },
+  { key: 'status', label: '状态' },
+  { key: 'retryCount', label: '重试次数' },
+  { key: 'createTime', label: '创建时间' },
+  { key: 'actions', label: '操作', fixed: true },
+]
+
+const {
+  hidden: hiddenColumns,
+  isHidden,
+  showAll: showAllColumns,
+  reset: resetColumns,
+} = useColumnSettings('admin-dead-letters', DEAD_LETTER_COLUMNS)
+
 const deadLetters = ref<DeadLetter[]>([])
 const total = ref(0)
 const loading = ref(false)
@@ -213,6 +261,11 @@ onMounted(fetchDeadLetters)
   margin: 0;
   font-size: 18px;
   color: #303133;
+}
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 .page-alert {
   margin-bottom: 16px;

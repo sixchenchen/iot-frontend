@@ -54,6 +54,12 @@
             <el-form-item>
               <el-button type="primary" @click="handleFirmwareSearch">查询</el-button>
               <el-button @click="handleFirmwareReset">重置</el-button>
+              <ColumnSettings
+                v-model:hidden="hiddenFirmwareColumns"
+                :columns="FIRMWARE_COLUMNS"
+                @show-all="showAllFirmwareColumns"
+                @reset="resetFirmwareColumns"
+              />
             </el-form-item>
           </el-form>
 
@@ -61,21 +67,21 @@
             <template #empty>
               <el-empty description="暂无固件，请先上传" :image-size="70" />
             </template>
-            <el-table-column prop="version" label="版本号" width="110" />
-            <el-table-column prop="product" label="产品型号" min-width="130" />
-            <el-table-column label="大小" width="100">
+            <el-table-column v-if="!isFirmwareHidden('version')" prop="version" label="版本号" width="110" />
+            <el-table-column v-if="!isFirmwareHidden('product')" prop="product" label="产品型号" min-width="130" />
+            <el-table-column v-if="!isFirmwareHidden('size')" label="大小" width="100">
               <template #default="{ row }">{{ row.sizeText || formatBytes(row.size) }}</template>
             </el-table-column>
-            <el-table-column label="MD5" min-width="180" show-overflow-tooltip>
+            <el-table-column v-if="!isFirmwareHidden('md5')" label="MD5" min-width="180" show-overflow-tooltip>
               <template #default="{ row }">{{ row.md5 || '-' }}</template>
             </el-table-column>
-            <el-table-column prop="uploadedBy" label="上传人" width="110">
+            <el-table-column v-if="!isFirmwareHidden('uploadedBy')" prop="uploadedBy" label="上传人" width="110">
               <template #default="{ row }">{{ row.uploadedBy || '-' }}</template>
             </el-table-column>
-            <el-table-column label="上传时间" width="170">
+            <el-table-column v-if="!isFirmwareHidden('uploadTime')" label="上传时间" width="170">
               <template #default="{ row }">{{ formatDateTime(row.uploadTime) }}</template>
             </el-table-column>
-            <el-table-column label="状态" width="90" align="center">
+            <el-table-column v-if="!isFirmwareHidden('status')" label="状态" width="90" align="center">
               <template #default="{ row }">
                 <el-tag :type="FIRMWARE_STATUS_TAG_TYPES[row.status] || 'info'" size="small">
                   {{ FIRMWARE_STATUS_LABELS[row.status] || row.status }}
@@ -128,17 +134,23 @@
             </el-form-item>
             <el-form-item>
               <el-button type="primary" @click="handleTaskSearch">查询</el-button>
+              <ColumnSettings
+                v-model:hidden="hiddenTaskColumns"
+                :columns="TASK_COLUMNS"
+                @show-all="showAllTaskColumns"
+                @reset="resetTaskColumns"
+              />
             </el-form-item>
           </el-form>
 
           <el-table :data="tasks" v-loading="taskLoading" stripe>
             <template #empty><el-empty description="暂无 OTA 任务" :image-size="60" /></template>
-            <el-table-column prop="id" label="任务 ID" width="90" />
-            <el-table-column prop="firmwareId" label="固件 ID" width="90" />
-            <el-table-column label="目标版本" width="110">
+            <el-table-column v-if="!isTaskHidden('id')" prop="id" label="任务 ID" width="90" />
+            <el-table-column v-if="!isTaskHidden('firmwareId')" prop="firmwareId" label="固件 ID" width="90" />
+            <el-table-column v-if="!isTaskHidden('targetVersion')" label="目标版本" width="110">
               <template #default="{ row }">{{ row.targetVersion || '-' }}</template>
             </el-table-column>
-            <el-table-column label="进度" min-width="220">
+            <el-table-column v-if="!isTaskHidden('progress')" label="进度" min-width="220">
               <template #default="{ row }">
                 <el-progress
                   :percentage="taskPercentage(row as OtaTaskVO)"
@@ -146,20 +158,20 @@
                 />
               </template>
             </el-table-column>
-            <el-table-column label="失败/待处理" width="120">
+            <el-table-column v-if="!isTaskHidden('failedPending')" label="失败/待处理" width="120">
               <template #default="{ row }">
                 {{ row.failedCount }} / {{ row.pendingCount }}
               </template>
             </el-table-column>
-            <el-table-column label="状态" width="90" align="center">
+            <el-table-column v-if="!isTaskHidden('status')" label="状态" width="90" align="center">
               <template #default="{ row }">
                 <el-tag type="info" size="small">状态 {{ row.status }}</el-tag>
               </template>
             </el-table-column>
-            <el-table-column prop="operator" label="操作人" width="110">
+            <el-table-column v-if="!isTaskHidden('operator')" prop="operator" label="操作人" width="110">
               <template #default="{ row }">{{ row.operator || '-' }}</template>
             </el-table-column>
-            <el-table-column label="创建时间" width="170">
+            <el-table-column v-if="!isTaskHidden('createTime')" label="创建时间" width="170">
               <template #default="{ row }">{{ formatDateTime(row.createTime) }}</template>
             </el-table-column>
             <el-table-column label="操作" width="150" fixed="right">
@@ -368,6 +380,8 @@ import {
   FIRMWARE_STATUS_LABELS,
   FIRMWARE_STATUS_TAG_TYPES,
 } from '@/utils/status'
+import ColumnSettings from '@/components/common/ColumnSettings.vue'
+import { useColumnSettings, type ColumnOption } from '@/composables/useColumnSettings'
 
 /**
  * ============================================================================
@@ -380,6 +394,45 @@ import {
  * ============================================================================
  */
 const authStore = useAuthStore()
+
+/** 固件列表列配置（storageKey: admin-firmware）；操作列固定显示，避免隐藏后无法操作。 */
+const FIRMWARE_COLUMNS: ColumnOption[] = [
+  { key: 'version', label: '版本号' },
+  { key: 'product', label: '产品型号' },
+  { key: 'size', label: '大小' },
+  { key: 'md5', label: 'MD5' },
+  { key: 'uploadedBy', label: '上传人' },
+  { key: 'uploadTime', label: '上传时间' },
+  { key: 'status', label: '状态' },
+  { key: 'actions', label: '操作', fixed: true },
+]
+
+const {
+  hidden: hiddenFirmwareColumns,
+  isHidden: isFirmwareHidden,
+  showAll: showAllFirmwareColumns,
+  reset: resetFirmwareColumns,
+} = useColumnSettings('admin-firmware', FIRMWARE_COLUMNS)
+
+/** OTA 任务列表列配置（storageKey: admin-firmware-tasks）；操作列固定显示。 */
+const TASK_COLUMNS: ColumnOption[] = [
+  { key: 'id', label: '任务 ID' },
+  { key: 'firmwareId', label: '固件 ID' },
+  { key: 'targetVersion', label: '目标版本' },
+  { key: 'progress', label: '进度' },
+  { key: 'failedPending', label: '失败/待处理' },
+  { key: 'status', label: '状态' },
+  { key: 'operator', label: '操作人' },
+  { key: 'createTime', label: '创建时间' },
+  { key: 'actions', label: '操作', fixed: true },
+]
+
+const {
+  hidden: hiddenTaskColumns,
+  isHidden: isTaskHidden,
+  showAll: showAllTaskColumns,
+  reset: resetTaskColumns,
+} = useColumnSettings('admin-firmware-tasks', TASK_COLUMNS)
 
 const activeTab = ref<'firmware' | 'tasks'>('firmware')
 const products = ref<string[]>([])

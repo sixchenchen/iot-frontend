@@ -32,6 +32,12 @@
             </el-tag>
           </el-tooltip>
           <el-button :loading="loading" @click="fetchData">刷新</el-button>
+          <ColumnSettings
+            v-model:hidden="hiddenColumns"
+            :columns="DEVICE_COLUMNS"
+            @show-all="showAllColumns"
+            @reset="resetColumns"
+          />
         </div>
       </div>
 
@@ -45,24 +51,24 @@
           </el-empty>
         </template>
 
-        <el-table-column prop="deviceId" label="设备ID (MAC)" width="180" />
-        <el-table-column prop="deviceName" label="设备名称" min-width="140">
+        <el-table-column v-if="!isHidden('deviceId')" prop="deviceId" label="设备ID (MAC)" width="180" />
+        <el-table-column v-if="!isHidden('deviceName')" prop="deviceName" label="设备名称" min-width="140">
           <template #default="{ row }">{{ row.deviceName || '-' }}</template>
         </el-table-column>
-        <el-table-column prop="product" label="产品型号" width="140">
+        <el-table-column v-if="!isHidden('product')" prop="product" label="产品型号" width="140">
           <template #default="{ row }">{{ row.product || '-' }}</template>
         </el-table-column>
-        <el-table-column prop="firmware" label="固件版本" width="120">
+        <el-table-column v-if="!isHidden('firmware')" prop="firmware" label="固件版本" width="120">
           <template #default="{ row }">{{ row.firmware || '-' }}</template>
         </el-table-column>
-        <el-table-column label="在线状态" width="100" align="center">
+        <el-table-column v-if="!isHidden('online')" label="在线状态" width="100" align="center">
           <template #default="{ row }">
             <el-tag :type="isDeviceOnline(row.online) ? 'success' : 'info'">
               {{ isDeviceOnline(row.online) ? '在线' : '离线' }}
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="实时状态" min-width="220">
+        <el-table-column v-if="!isHidden('realtime')" label="实时状态" min-width="220">
           <template #default="{ row }">
             <div v-if="realtimeStore.getStates(row.deviceId).length" class="realtime-states">
               <el-tag
@@ -80,7 +86,7 @@
             </div>
           </template>
         </el-table-column>
-        <el-table-column label="OTA 状态" width="120" align="center">
+        <el-table-column v-if="!isHidden('otaState')" label="OTA 状态" width="120" align="center">
           <template #default="{ row }">
             <span v-if="row.otaState">
               {{ OTA_STATE_LABELS[row.otaState] || row.otaState }}
@@ -89,7 +95,7 @@
             <span v-else>-</span>
           </template>
         </el-table-column>
-        <el-table-column label="最后心跳时间" width="170">
+        <el-table-column v-if="!isHidden('lastHeartbeat')" label="最后心跳时间" width="170">
           <template #default="{ row }">{{ formatDateTime(row.lastHeartbeatTime) }}</template>
         </el-table-column>
 
@@ -289,6 +295,8 @@ import {
   normalizeMac,
 } from '@/utils/device'
 import { downloadBlob, timestampedFilename } from '@/utils/download'
+import ColumnSettings from '@/components/common/ColumnSettings.vue'
+import { useColumnSettings, type ColumnOption } from '@/composables/useColumnSettings'
 
 /**
  * ============================================================================
@@ -306,6 +314,26 @@ import { downloadBlob, timestampedFilename } from '@/utils/download'
  * 列表页只负责概览与入口，避免单个页面职责过重。
  * ============================================================================
  */
+/** 列配置（storageKey: device-list）；操作列固定显示，避免隐藏后无法操作。 */
+const DEVICE_COLUMNS: ColumnOption[] = [
+  { key: 'deviceId', label: '设备ID (MAC)' },
+  { key: 'deviceName', label: '设备名称' },
+  { key: 'product', label: '产品型号' },
+  { key: 'firmware', label: '固件版本' },
+  { key: 'online', label: '在线状态' },
+  { key: 'realtime', label: '实时状态' },
+  { key: 'otaState', label: 'OTA 状态' },
+  { key: 'lastHeartbeat', label: '最后心跳时间' },
+  { key: 'actions', label: '操作', fixed: true },
+]
+
+const {
+  hidden: hiddenColumns,
+  isHidden,
+  showAll: showAllColumns,
+  reset: resetColumns,
+} = useColumnSettings('device-list', DEVICE_COLUMNS)
+
 const route = useRoute()
 const router = useRouter()
 const isManageMode = computed(() => route.name === 'DeviceManage')

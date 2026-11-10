@@ -25,6 +25,14 @@
             />
           </el-select>
         </el-form-item>
+        <el-form-item>
+          <ColumnSettings
+            v-model:hidden="hiddenColumns"
+            :columns="OTA_RECORD_COLUMNS"
+            @show-all="showAllColumns"
+            @reset="resetColumns"
+          />
+        </el-form-item>
       </el-form>
 
       <el-alert
@@ -66,26 +74,37 @@
 
         <el-table :data="records" v-loading="recordsLoading" stripe>
           <template #empty><el-empty description="暂无升级记录" :image-size="60" /></template>
-          <el-table-column prop="version" label="目标版本" width="120" />
-          <el-table-column label="指令状态" width="110" align="center">
+          <el-table-column v-if="!isHidden('version')" prop="version" label="目标版本" width="120" />
+          <el-table-column
+            v-if="!isHidden('commandStatus')"
+            label="指令状态"
+            width="110"
+            align="center"
+          >
             <template #default="{ row }">
               <el-tag :type="COMMAND_STATUS_TAG_TYPES[row.status] || 'info'" size="small">
                 {{ row.statusText || COMMAND_STATUS_LABELS[row.status] || row.status }}
               </el-tag>
             </template>
           </el-table-column>
-          <el-table-column label="OTA 阶段" width="110">
+          <el-table-column v-if="!isHidden('otaState')" label="OTA 阶段" width="110">
             <template #default="{ row }">
               {{ row.otaState ? OTA_STATE_LABELS[row.otaState] || row.otaState : '-' }}
             </template>
           </el-table-column>
-          <el-table-column label="进度" width="110">
+          <el-table-column v-if="!isHidden('progress')" label="进度" width="110">
             <template #default="{ row }">{{ row.progress ?? 0 }}%</template>
           </el-table-column>
-          <el-table-column prop="errorMsg" label="失败原因" min-width="180" show-overflow-tooltip>
+          <el-table-column
+            v-if="!isHidden('errorMsg')"
+            prop="errorMsg"
+            label="失败原因"
+            min-width="180"
+            show-overflow-tooltip
+          >
             <template #default="{ row }">{{ row.errorMsg || '-' }}</template>
           </el-table-column>
-          <el-table-column label="创建时间" width="170">
+          <el-table-column v-if="!isHidden('createTime')" label="创建时间" width="170">
             <template #default="{ row }">{{ formatDateTime(row.createTime) }}</template>
           </el-table-column>
           <el-table-column label="操作" width="100" fixed="right">
@@ -128,21 +147,42 @@ import type { Device } from '@/types/device'
 import type { OtaProgressVO, OtaRecordVO } from '@/types/ota'
 import { OTA_STATE_LABELS, formatDateTime } from '@/utils/device'
 import { COMMAND_STATUS_LABELS, COMMAND_STATUS_TAG_TYPES } from '@/utils/status'
+import ColumnSettings from '@/components/common/ColumnSettings.vue'
+import { useColumnSettings, type ColumnOption } from '@/composables/useColumnSettings'
 
 /**
  * ============================================================================
- * 用户 OTA 升级记录（文档 8.5 / 6.8）
+ * 用户 OTA 升级记录
  * ============================================================================
  * devices 来自 GET /user/devices/my（pageSize 100，足以覆盖个人设备）。
  * 记录接口 deviceId 必填，因此未选择设备时不发请求。
  *
- * 实时策略（企业级）：
+ * 实时策略
  *   1. WS 推送 `ota_progress` 为主，进度即时刷新，无需手动点「刷新」；
  *   2. REST `GET /user/ota/progress/{deviceId}` 作为兜底快照（弱网/未连上时）；
  *   3. 合并规则：WS 已进入终态优先；否则取进度更大者，避免旧快照覆盖新进度；
  *   4. 终态到达后自动刷新升级记录列表，并断开该页额外的订阅依赖（页面卸载时统一断开）。
  * ============================================================================
  */
+
+/** 可配置列；操作列固定显示。 */
+const OTA_RECORD_COLUMNS: ColumnOption[] = [
+  { key: 'version', label: '目标版本' },
+  { key: 'commandStatus', label: '指令状态' },
+  { key: 'otaState', label: 'OTA 阶段' },
+  { key: 'progress', label: '进度' },
+  { key: 'errorMsg', label: '失败原因' },
+  { key: 'createTime', label: '创建时间' },
+  { key: 'actions', label: '操作', fixed: true },
+]
+
+const {
+  hidden: hiddenColumns,
+  isHidden,
+  showAll: showAllColumns,
+  reset: resetColumns,
+} = useColumnSettings('ota-records', OTA_RECORD_COLUMNS)
+
 const realtimeStore = useDeviceRealtimeStore()
 const devices = ref<Device[]>([])
 const devicesLoading = ref(false)
