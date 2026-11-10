@@ -5,7 +5,7 @@ import type { CommandQuery, DeviceCommand } from '@/types/command'
 
 /**
  * ============================================================================
- * 管理端运维接口（文档 8.9）
+ * 管理端运维接口
  * ============================================================================
  *   - GET /admin/dashboard/summary（权限 device:list）
  *   - GET /admin/audit-logs（权限 device:list）

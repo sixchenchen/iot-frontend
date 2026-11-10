@@ -16,11 +16,11 @@ import { useAuthStore } from '@/stores/useAuthStore'
  *     时可以恢复；
  *   - 原始 display 存在 WeakMap，避免污染业务样式。
  *
- * ⚠️ 这只是「不展示」，不是「不能调用」。真正的鉴权必须在后端完成，
+ *    这只是「不展示」，不是「不能调用」。真正的鉴权必须在后端完成，
  *    前端不能把隐藏按钮当作安全措施。
  * ============================================================================
  */
-const originalDisplayMap = new WeakMap<HTMLElement, string>()
+const originalDisplayMap = new WeakMap<HTMLElement, string>() // key 是 DOM 元素，value 存这个元素**原本的 display 值**
 
 function isAllowed(value: unknown): boolean {
   if (!value) return true

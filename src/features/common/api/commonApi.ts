@@ -9,7 +9,6 @@ import type {
  * ============================================================================
  * 通用能力接口（features/common/api）
  * ============================================================================
- * 覆盖文档 8.10：
  *   - POST /common/upload/avatar（multipart/form-data，字段名 file）
  *   - GET  /common/dictionaries（角色、状态、枚举、产品型号）
  *   - GET  /actuator/health（免认证，不在 /api 前缀下）

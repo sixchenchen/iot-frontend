@@ -28,6 +28,11 @@ import {
  *     页面级用 roles 控制是否可进入，按钮级用 v-permission 控制具体操作，
  *     因为同一管理页面下的列表/新增/删除往往对应不同权限码；
  *   - 详情页使用 meta.hidden 从菜单中隐藏，但保留直接访问与回退能力。
+ *
+ * 菜单分组（meta.group / meta.order）按物联网业务域划分，与 smart_device 库表族对应：
+ *   overview 运营总览 | device 设备资产 | control 指令控制
+ *   monitor 监控告警  | ota 固件升级    | system 系统管理
+ * 新增页面时只需补 group/order，菜单会自动归位，无需改动布局组件。
  * ============================================================================
  */
 export const routes: RouteRecordRaw[] = [
@@ -48,37 +53,37 @@ export const routes: RouteRecordRaw[] = [
         path: 'device/mine',
         name: 'MyDevices',
         component: () => import('@/pages/device/DeviceListPage.vue'),
-        meta: { title: '我的设备', icon: Monitor },
+        meta: { title: '我的设备', icon: Monitor, group: 'device', order: 10 },
       },
       {
         path: 'device/:deviceId',
         name: 'UserDeviceDetail',
         component: () => import('@/pages/device/UserDeviceDetailPage.vue'),
-        meta: { title: '设备详情', hidden: true },
+        meta: { title: '设备详情', hidden: true, group: 'device', order: 11 },
       },
       {
         path: 'commands',
         name: 'MyCommands',
         component: () => import('@/pages/command/CommandPage.vue'),
-        meta: { title: '我的指令', icon: Tickets },
+        meta: { title: '我的指令', icon: Tickets, group: 'control', order: 10 },
       },
       {
         path: 'alerts',
         name: 'MyAlerts',
         component: () => import('@/pages/alert/AlertPage.vue'),
-        meta: { title: '我的告警', icon: Bell },
+        meta: { title: '我的告警', icon: Bell, group: 'monitor', order: 10 },
       },
       {
         path: 'ota/records',
         name: 'OtaRecords',
         component: () => import('@/pages/ota/OtaRecordPage.vue'),
-        meta: { title: '升级记录', icon: DataLine },
+        meta: { title: '升级记录', icon: DataLine, group: 'ota', order: 10 },
       },
       {
         path: 'profile',
         name: 'UserCenter',
         component: () => import('@/pages/profile/UserCenterPage.vue'),
-        meta: { title: '个人中心', icon: User },
+        meta: { title: '个人中心', icon: User, group: 'system', order: 90 },
       },
 
       // ==================== 管理端 ====================
@@ -86,7 +91,14 @@ export const routes: RouteRecordRaw[] = [
         path: 'admin/dashboard',
         name: 'AdminDashboard',
         component: () => import('@/pages/admin/DashboardPage.vue'),
-        meta: { title: '数据概览', icon: Odometer, roles: ['ADMIN'], permission: 'device:list' },
+        meta: {
+          title: '数据概览',
+          icon: Odometer,
+          roles: ['ADMIN'],
+          permission: 'device:list',
+          group: 'overview',
+          order: 10,
+        },
       },
       {
         path: 'device/manage',
@@ -97,6 +109,8 @@ export const routes: RouteRecordRaw[] = [
           icon: Setting,
           roles: ['ADMIN'],
           permission: 'device:list',
+          group: 'device',
+          order: 20,
         },
       },
       {
@@ -104,7 +118,14 @@ export const routes: RouteRecordRaw[] = [
         name: 'AdminDeviceDetail',
         component: () => import('@/pages/admin/AdminDeviceDetailPage.vue'),
         // 详情接口使用 device:read，列表使用 device:list，页面级按详情权限控制。
-        meta: { title: '设备详情', hidden: true, roles: ['ADMIN'], permission: 'device:read' },
+        meta: {
+          title: '设备详情',
+          hidden: true,
+          roles: ['ADMIN'],
+          permission: 'device:read',
+          group: 'device',
+          order: 21,
+        },
       },
       {
         path: 'ota/firmware',
@@ -114,6 +135,8 @@ export const routes: RouteRecordRaw[] = [
           title: '固件管理',
           icon: UploadFilled,
           roles: ['ADMIN'],
+          group: 'ota',
+          order: 20,
           // 该页包含上传/启停/删除/批量下发/任务取消多个权限码，
           // 页面级只校验角色，具体按钮由 v-permission 控制。
         },
@@ -122,32 +145,53 @@ export const routes: RouteRecordRaw[] = [
         path: 'admin/users',
         name: 'UserManage',
         component: () => import('@/pages/admin/UserManagePage.vue'),
-        meta: { title: '用户管理', icon: User, roles: ['ADMIN'] },
+        meta: { title: '用户管理', icon: User, roles: ['ADMIN'], group: 'system', order: 10 },
       },
       {
         path: 'admin/commands',
         name: 'AdminCommands',
         component: () => import('@/pages/command/CommandPage.vue'),
-        meta: { title: '全局指令', icon: Tickets, roles: ['ADMIN'], permission: 'device:list' },
+        meta: {
+          title: '全局指令',
+          icon: Tickets,
+          roles: ['ADMIN'],
+          permission: 'device:list',
+          group: 'control',
+          order: 20,
+        },
       },
       {
         path: 'admin/alerts',
         name: 'AdminAlerts',
         component: () => import('@/pages/alert/AlertPage.vue'),
-        meta: { title: '告警管理', icon: Bell, roles: ['ADMIN'], permission: 'alert:list' },
+        meta: {
+          title: '告警管理',
+          icon: Bell,
+          roles: ['ADMIN'],
+          permission: 'alert:list',
+          group: 'monitor',
+          order: 20,
+        },
       },
       {
         path: 'admin/audit-logs',
         name: 'AuditLogs',
         component: () => import('@/pages/admin/AuditLogPage.vue'),
-        meta: { title: '指令审计', icon: Document, roles: ['ADMIN'], permission: 'device:list' },
+        meta: {
+          title: '指令审计',
+          icon: Document,
+          roles: ['ADMIN'],
+          permission: 'device:list',
+          group: 'control',
+          order: 30,
+        },
       },
       {
         path: 'admin/dead-letters',
         name: 'DeadLetters',
         component: () => import('@/pages/admin/DeadLetterPage.vue'),
         // 死信接口仅校验 ROLE_ADMIN，没有权限码（文档 3.5）。
-        meta: { title: '死信管理', icon: Warning, roles: ['ADMIN'] },
+        meta: { title: '死信管理', icon: Warning, roles: ['ADMIN'], group: 'system', order: 20 },
       },
     ],
   },

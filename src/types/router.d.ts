@@ -14,6 +14,8 @@ import 'vue-router'
  *   - permission 权限码，需与后端返回的 permissions 完全一致（细粒度）
  *   - icon       菜单图标组件（Element Plus 图标）
  *   - hidden     不在侧边菜单中展示（如详情页）
+ *   - group      所属菜单分组（见 src/router/menu.ts 的 MENU_GROUPS）
+ *   - order      同分组内的排序权重，越小越靠前
  * ============================================================================
  */
 declare module 'vue-router' {
@@ -24,5 +26,7 @@ declare module 'vue-router' {
     permission?: string
     icon?: import('vue').Component
     hidden?: boolean
+    group?: import('@/router/menu').MenuGroupKey
+    order?: number
   }
 }

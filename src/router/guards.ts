@@ -55,7 +55,6 @@ export function setupGuards(router: Router) {
     if (permission && !auth.hasPermission(permission)) {
       return { name: 'Forbidden' }
     }
-
     return true
   })
 }
